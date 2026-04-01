@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Kasir Bluetooth</title>
+  
+  <!-- Memuat Tailwind CSS untuk Desain -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Memuat React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Memuat Babel (Untuk membaca kode React di dalam HTML) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50">
+
+  <!-- Wadah Aplikasi -->
+  <div id="root"></div>
+
+  <!-- Kode React Utama -->
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // --- KUMPULAN ICON (Menggantikan library eksternal) ---
+    const Icon = ({ children, size = 24, className = "" }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+    );
+    const ShoppingCart = (p) => <Icon {...p}><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></Icon>;
+    const Printer = (p) => <Icon {...p}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></Icon>;
+    const Plus = (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>;
+    const Minus = (p) => <Icon {...p}><path d="M5 12h14"/></Icon>;
+    const Trash2 = (p) => <Icon {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></Icon>;
+    const AlertCircle = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></Icon>;
+    const CheckCircle2 = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></Icon>;
+    const Coffee = (p) => <Icon {...p}><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></Icon>;
+    const Utensils = (p) => <Icon {...p}><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></Icon>;
+    const PackageIcon = (p) => <Icon {...p}><line x1="16.5" x2="7.5" y1="9.4" y2="4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></Icon>;
+    const LayoutDashboard = (p) => <Icon {...p}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></Icon>;
+    const ClipboardList = (p) => <Icon {...p}><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></Icon>;
+    const PackageSearch = (p) => <Icon {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="M16.5 9.4 7.55 4.24"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M20.27 17.27 22 19"/></Icon>;
+    const Edit2 = (p) => <Icon {...p}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></Icon>;
+    const X = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
+    const Save = (p) => <Icon {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></Icon>;
+    const Settings = (p) => <Icon {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></Icon>;
+    const Store = (p) => <Icon {...p}><path d="M20.92 8.96 19.33 3.4A2 2 0 0 0 17.41 2H6.59a2 2 0 0 0-1.92 1.4L3.08 8.96A2 2 0 0 0 3 10v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2a2 2 0 0 0-.08-1.04z"/><path d="M5 14v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/><path d="M12 14v8"/></Icon>;
+    const FileText = (p) => <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></Icon>;
+    const Lock = (p) => <Icon {...p}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></Icon>;
+    const LogOut = (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></Icon>;
+    const Image = (p) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></Icon>;
+    const Upload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></Icon>;
+
+    // --- DATA AWAL ---
+    const INITIAL_PRODUCTS = [
+      { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, category: 'Minuman', stock: 50 },
+      { id: 2, name: 'Americano', price: 15000, category: 'Minuman', stock: 50 },
+      { id: 3, name: 'Matcha Latte', price: 22000, category: 'Minuman', stock: 40 },
+      { id: 4, name: 'Nasi Goreng Spesial', price: 25000, category: 'Makanan', stock: 30 },
+      { id: 5, name: 'Mie Goreng Telur', price: 15000, category: 'Makanan', stock: 35 },
+      { id: 6, name: 'Kentang Goreng', price: 12000, category: 'Cemilan', stock: 100 },
+      { id: 7, name: 'Roti Bakar Coklat', price: 15000, category: 'Cemilan', stock: 25 },
+      { id: 8, name: 'Es Teh Manis', price: 5000, category: 'Minuman', stock: 100 },
+    ];
+
+    function App() {
+      const [cart, setCart] = useState([]);
+      const [printerDevice, setPrinterDevice] = useState(null);
+      const [printerCharacteristic, setPrinterCharacteristic] = useState(null);
+      const [isConnecting, setIsConnecting] = useState(false);
+      const [errorMsg, setErrorMsg] = useState('');
+      const [isSupported, setIsSupported] = useState(true);
+
+      const [activeTab, setActiveTab] = useState('kasir');
+      const [products, setProducts] = useState(() => {
+        const saved = localStorage.getItem('pos_products');
+        return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+      });
+      const [salesHistory, setSalesHistory] = useState(() => {
+        const saved = localStorage.getItem('pos_sales');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [storeInfo, setStoreInfo] = useState(() => {
+        const saved = localStorage.getItem('pos_store_info');
+        return saved ? JSON.parse(saved) : { name: 'POS Kasir Mini', address: 'Jl. GitHub Pages No. 1', logo: '' };
+      });
+
+      const [categories, setCategories] = useState(() => {
+        const saved = localStorage.getItem('pos_categories');
+        return saved ? JSON.parse(saved) : ['Minuman', 'Makanan', 'Cemilan', 'Lainnya'];
+      });
+      const [newCategory, setNewCategory] = useState('');
+      const [editingCategory, setEditingCategory] = useState(null);
+      const [editCategoryInput, setEditCategoryInput] = useState('');
+      
+      const [editingId, setEditingId] = useState(null);
+      const [formData, setFormData] = useState({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '' });
+      const [currentReceipt, setCurrentReceipt] = useState(null);
+      const [showPaymentModal, setShowPaymentModal] = useState(false);
+      const [cashAmount, setCashAmount] = useState('');
+
+      // State Auth & PIN Login
+      const [isAuthenticated, setIsAuthenticated] = useState(false);
+      const [pinCode, setPinCode] = useState(() => localStorage.getItem('pos_pin') || '1234');
+      const [loginInput, setLoginInput] = useState('');
+      const [loginError, setLoginError] = useState('');
+
+      // State Form Ubah PIN
+      const [oldPinInput, setOldPinInput] = useState('');
+      const [newPinInput, setNewPinInput] = useState('');
+      const [confirmPinInput, setConfirmPinInput] = useState('');
+      const [pinMessage, setPinMessage] = useState({ type: '', text: '' });
+
+      const fileInputRef = useRef(null);
+
+      useEffect(() => { localStorage.setItem('pos_products', JSON.stringify(products)); }, [products]);
+      useEffect(() => { localStorage.setItem('pos_sales', JSON.stringify(salesHistory)); }, [salesHistory]);
+      useEffect(() => { localStorage.setItem('pos_store_info', JSON.stringify(storeInfo)); }, [storeInfo]);
+      useEffect(() => { localStorage.setItem('pos_pin', pinCode); }, [pinCode]);
+      useEffect(() => { localStorage.setItem('pos_categories', JSON.stringify(categories)); }, [categories]);
+
+      const getCategoryIcon = (category) => {
+        switch(category?.toLowerCase()) {
+          case 'minuman': return <Coffee size={24} />;
+          case 'makanan': return <Utensils size={24} />;
+          default: return <PackageIcon size={24} />;
+        }
+      };
+
+      const handleProductSubmit = (e) => {
+        e.preventDefault();
+        if (!formData.name || !formData.price || formData.stock === '') return;
+
+        if (editingId) {
+          setProducts(products.map(p => p.id === editingId ? { ...p, ...formData, price: Number(formData.price), stock: Number(formData.stock) } : p));
+          setEditingId(null);
+        } else {
+          setProducts([...products, { id: Date.now(), ...formData, price: Number(formData.price), stock: Number(formData.stock) }]);
+        }
+        setFormData({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '' });
+      };
+
+      const handleEditProduct = (product) => {
+        setEditingId(product.id);
+        setFormData({ name: product.name, price: product.price, category: product.category, stock: product.stock !== undefined ? product.stock : 0 });
+        setActiveTab('produk');
+      };
+
+      const handleDeleteProduct = (id) => {
+        if (window.confirm('Yakin ingin menghapus produk ini?')) {
+          setProducts(products.filter(p => p.id !== id));
+          removeFromCart(id);
+        }
+      };
+
+      useEffect(() => {
+        if (!navigator.bluetooth) {
+          setIsSupported(false);
+          setErrorMsg('Browser ini tidak mendukung Web Bluetooth. Gunakan Chrome atau Edge (Android/PC). iOS tidak didukung.');
+        }
+      }, []);
+
+      const formatRupiah = (angka) => {
+        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+      };
+
+      const addToCart = (product) => {
+        const currentStock = product.stock !== undefined ? product.stock : 0;
+        if (currentStock <= 0) return alert('Stok produk habis!');
+        
+        setCart((prevCart) => {
+          const existingItem = prevCart.find((item) => item.product.id === product.id);
+          if (existingItem) {
+            if (existingItem.quantity >= currentStock) {
+              alert('Maksimal stok tercapai!');
+              return prevCart;
+            }
+            return prevCart.map((item) => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+          }
+          return [...prevCart, { product, quantity: 1 }];
+        });
+      };
+
+      const updateQuantity = (productId, delta) => {
+        setCart((prevCart) => prevCart.map((item) => {
+            if (item.product.id === productId) {
+              const currentStock = item.product.stock !== undefined ? item.product.stock : 0;
+              const newQuantity = item.quantity + delta;
+              if (newQuantity > currentStock) {
+                alert('Maksimal stok tercapai!');
+                return item;
+              }
+              return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
+            }
+            return item;
+          }).filter(item => item.quantity > 0)
+        );
+      };
+
+      const removeFromCart = (productId) => {
+        setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
+      };
+
+      const total = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
+      const changeAmount = Number(cashAmount) - total;
+
+      // --- LOGIKA BLUETOOTH ---
+      const connectToPrinter = async () => {
+        setIsConnecting(true);
+        setErrorMsg('');
+        try {
+          const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [
+              '000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '49535343-fe7d-4ae5-8fa9-9fafd205e455'
+            ]
+          });
+
+          const server = await device.gatt.connect();
+          const services = await server.getPrimaryServices();
+          if (services.length === 0) throw new Error('Tidak ada layanan Bluetooth.');
+
+          let writeCharacteristic = null;
+          for (const service of services) {
+            const characteristics = await service.getCharacteristics();
+            for (const characteristic of characteristics) {
+              if (characteristic.properties.write || characteristic.properties.writeWithoutResponse) {
+                writeCharacteristic = characteristic; break;
+              }
+            }
+            if (writeCharacteristic) break;
+          }
+
+          if (!writeCharacteristic) throw new Error('Printer tidak bisa menerima data.');
+
+          setPrinterDevice(device);
+          setPrinterCharacteristic(writeCharacteristic);
+
+          device.addEventListener('gattserverdisconnected', () => {
+            setPrinterDevice(null);
+            setPrinterCharacteristic(null);
+            setErrorMsg('Printer terputus.');
+          });
+
+        } catch (err) {
+          console.error(err);
+          setErrorMsg(err.message || 'Gagal terhubung ke printer.');
+        } finally {
+          setIsConnecting(false);
+        }
+      };
+
+      const sendTextToPrinter = async (characteristic, text) => {
+        const encoder = new TextEncoder();
+        const initCmd = new Uint8Array([0x1B, 0x40]);
+        await characteristic.writeValue(initCmd);
+
+        const data = encoder.encode(text);
+        for (let i = 0; i < data.length; i += 100) {
+          await characteristic.writeValue(data.slice(i, i + 100));
+        }
+
+        const feedCmd = new Uint8Array([0x0A, 0x0A, 0x0A]);
+        await characteristic.writeValue(feedCmd);
+      };
+
+      const padCenter = (str, length) => {
+        if (!str) return ' '.repeat(length);
+        if (str.length >= length) return str.substring(0, length);
+        const leftPad = Math.floor((length - str.length) / 2);
+        return ' '.repeat(leftPad) + str + ' '.repeat(length - str.length - leftPad);
+      };
+
+      const printReceiptAsPDF = () => {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        const html = `
+          <html><head><title>Struk_${currentReceipt.id}</title>
+            <style>
+              @page { margin: 0; size: 58mm auto; }
+              body { font-family: 'Courier New', Courier, monospace; width: 58mm; margin: 0 auto; padding: 10px; color: #000; font-size: 12px; }
+              .text-center { text-align: center; } .text-right { text-align: right; } .font-bold { font-weight: bold; }
+              .divider { border-top: 1px dashed #000; margin: 8px 0; }
+              table { width: 100%; border-collapse: collapse; } td { padding: 2px 0; vertical-align: top; }
+              .receipt-logo { max-width: 40mm; max-height: 20mm; margin: 0 auto 10px auto; display: block; object-fit: contain; }
+            </style>
+          </head><body>
+            ${storeInfo.logo ? `<img src="${storeInfo.logo}" class="receipt-logo" />` : ''}
+            <div class="text-center font-bold" style="font-size:14px; margin-bottom:4px;">${storeInfo.name}</div>
+            <div class="text-center" style="font-size:10px; margin-bottom:15px;">${storeInfo.address}</div>
+            <div style="font-size: 10px; margin-bottom: 8px;">Tanggal: ${currentReceipt.date}</div>
+            <div class="divider"></div>
+            <table>
+              ${currentReceipt.items.map(item => `
+                <tr><td colspan="2" class="font-bold">${item.product.name}</td></tr>
+                <tr><td>${item.quantity}x ${formatRupiah(item.product.price)}</td><td class="text-right">${formatRupiah(item.quantity * item.product.price)}</td></tr>
+              `).join('')}
+            </table>
+            <div class="divider"></div>
+            <table>
+              <tr><td class="font-bold" style="font-size:14px;">TOTAL</td><td class="text-right font-bold" style="font-size:14px;">${formatRupiah(currentReceipt.total)}</td></tr>
+              <tr><td class="font-bold" style="font-size:12px;">TUNAI</td><td class="text-right" style="font-size:12px;">${formatRupiah(currentReceipt.cash || 0)}</td></tr>
+              <tr><td class="font-bold" style="font-size:12px;">KEMBALI</td><td class="text-right font-bold" style="font-size:12px;">${formatRupiah(currentReceipt.change || 0)}</td></tr>
+            </table>
+            <div class="divider"></div>
+            <div class="text-center" style="font-size: 10px; margin-top: 10px;">Terima Kasih</div>
+            <div class="text-center" style="font-size: 10px; margin-top: 2px;">Silakan datang kembali :)</div>
+          </body></html>
+        `;
+
+        iframe.contentWindow.document.open();
+        iframe.contentWindow.document.write(html);
+        iframe.contentWindow.document.close();
+
+        setTimeout(() => {
+          try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { window.print(); }
+          setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1000);
+        }, 500);
+      };
+
+      const printSalesSummaryAsPDF = () => {
+        if (salesHistory.length === 0) return alert('Tidak ada data rekap untuk dicetak.');
+        
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        const grandTotal = salesHistory.reduce((sum, sale) => sum + sale.total, 0);
+        const printDate = new Date().toLocaleString('id-ID');
+
+        const html = `
+          <html><head><title>Rekap_Penjualan_${storeInfo.name}</title>
+            <style>
+              @page { margin: 20mm; size: A4 portrait; }
+              body { font-family: sans-serif; color: #333; font-size: 14px; line-height: 1.5; }
+              .text-center { text-align: center; } .text-right { text-align: right; } .font-bold { font-weight: bold; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
+              th { background-color: #f8f9fa; }
+              .header { margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+              .item-list { font-size: 12px; color: #555; }
+              .summary-logo { max-height: 30px; margin-right: 10px; vertical-align: middle; }
+            </style>
+          </head><body>
+            <div class="header">
+              <h1 class="text-center" style="margin:0 0 5px 0;">
+                ${storeInfo.logo ? `<img src="${storeInfo.logo}" class="summary-logo" />` : ''}
+                ${storeInfo.name}
+              </h1>
+              <p class="text-center" style="margin:0; color:#555;">${storeInfo.address}</p>
+              <h2 class="text-center" style="margin:15px 0 5px 0; font-size: 18px;">Laporan Rekap Penjualan</h2>
+              <p class="text-center" style="margin:0; font-size:12px; color:#777;">Dicetak pada: ${printDate}</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 5%;">No</th>
+                  <th style="width: 25%;">Waktu Transaksi</th>
+                  <th style="width: 45%;">Rincian Item</th>
+                  <th class="text-right" style="width: 25%;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${salesHistory.map((sale, index) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td>${sale.date}</td>
+                    <td class="item-list">
+                      ${sale.items.map(item => `${item.quantity}x ${item.product.name}`).join('<br>')}
+                    </td>
+                    <td class="text-right font-bold">${formatRupiah(sale.total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" class="text-right font-bold" style="font-size: 16px;">TOTAL PENDAPATAN</td>
+                  <td class="text-right font-bold" style="font-size: 16px; color: #16a34a;">${formatRupiah(grandTotal)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </body></html>
+        `;
+
+        iframe.contentWindow.document.open();
+        iframe.contentWindow.document.write(html);
+        iframe.contentWindow.document.close();
+
+        setTimeout(() => {
+          try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { window.print(); }
+          setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1000);
+        }, 500);
+      };
+
+      const printBluetooth = async (saleData) => {
+        if (!printerCharacteristic) return alert('Printer Bluetooth belum terhubung!');
+        try {
+          let receiptText = "";
+          receiptText += padCenter(storeInfo.name, 32) + "\n";
+          receiptText += padCenter(storeInfo.address, 32) + "\n";
+          receiptText += "================================\n";
+          
+          saleData.items.forEach(item => {
+            receiptText += `${item.product.name}\n`;
+            const qtyPrice = `${item.quantity} x ${item.product.price}`;
+            const subtotal = `${item.quantity * item.product.price}`;
+            const spaces = Math.max(1, 32 - qtyPrice.length - subtotal.length);
+            receiptText += `${qtyPrice}${' '.repeat(spaces)}${subtotal}\n`;
+          });
+          
+          receiptText += "================================\n";
+          const totalStr = `${saleData.total}`;
+          const totalLabel = "TOTAL:";
+          const totalSpaces = 32 - totalLabel.length - totalStr.length;
+          receiptText += `${totalLabel}${totalSpaces > 0 ? ' '.repeat(totalSpaces) : ' '}${totalStr}\n`;
+          
+          const cashStr = `${saleData.cash || 0}`;
+          const cashLabel = "TUNAI:";
+          const cashSpaces = 32 - cashLabel.length - cashStr.length;
+          receiptText += `${cashLabel}${cashSpaces > 0 ? ' '.repeat(cashSpaces) : ' '}${cashStr}\n`;
+
+          const changeStr = `${saleData.change || 0}`;
+          const changeLabel = "KEMBALI:";
+          const changeSpaces = 32 - changeLabel.length - changeStr.length;
+          receiptText += `${changeLabel}${changeSpaces > 0 ? ' '.repeat(changeSpaces) : ' '}${changeStr}\n`;
+          
+          receiptText += "================================\n";
+          receiptText += "          Terima Kasih         \n   Silakan datang kembali :)   \n\n\n";
+
+          await sendTextToPrinter(printerCharacteristic, receiptText);
+          alert('Struk berhasil dicetak via Bluetooth!');
+        } catch (err) {
+          alert('Gagal mencetak struk via Bluetooth: ' + err.message);
+        }
+      };
+
+      const handlePayment = () => {
+        if (cart.length === 0) return alert('Keranjang kosong!');
+        setCashAmount('');
+        setShowPaymentModal(true);
+      };
+
+      const processPayment = () => {
+        if (changeAmount < 0) return alert('Uang tunai kurang!');
+        const newSale = { id: Date.now(), date: new Date().toLocaleString('id-ID'), items: [...cart], total, cash: Number(cashAmount), change: changeAmount };
+        
+        // Kurangi stok produk
+        setProducts(prevProducts => prevProducts.map(p => {
+          const cartItem = cart.find(c => c.product.id === p.id);
+          if (cartItem) {
+            const currentStock = p.stock !== undefined ? p.stock : 0;
+            return { ...p, stock: Math.max(0, currentStock - cartItem.quantity) };
+          }
+          return p;
+        }));
+
+        setSalesHistory(prev => [newSale, ...prev]);
+        setCart([]); 
+        setShowPaymentModal(false);
+        setCurrentReceipt(newSale);
+      };
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        if (loginInput === pinCode) {
+          setIsAuthenticated(true);
+          setLoginError('');
+          setLoginInput('');
+        } else {
+          setLoginError('PIN salah! Silakan coba lagi.');
+        }
+      };
+
+      const handleLogout = () => {
+        if (window.confirm('Yakin ingin keluar dari sistem kasir?')) {
+          setIsAuthenticated(false);
+          setActiveTab('kasir'); // Reset tab saat login ulang
+        }
+      };
+
+      const handleChangePin = (e) => {
+        e.preventDefault();
+        if (oldPinInput !== pinCode) {
+          setPinMessage({ type: 'error', text: 'PIN Lama salah!' });
+          return;
+        }
+        if (newPinInput !== confirmPinInput) {
+          setPinMessage({ type: 'error', text: 'Konfirmasi PIN Baru tidak cocok!' });
+          return;
+        }
+        if (newPinInput.length < 4) {
+          setPinMessage({ type: 'error', text: 'PIN Baru harus minimal 4 karakter!' });
+          return;
+        }
+        setPinCode(newPinInput);
+        setPinMessage({ type: 'success', text: 'PIN berhasil diubah!' });
+        setOldPinInput('');
+        setNewPinInput('');
+        setConfirmPinInput('');
+        setTimeout(() => setPinMessage({ type: '', text: '' }), 3000);
+      };
+
+      const handleAddCategory = () => {
+        if (!newCategory.trim()) return;
+        if (categories.includes(newCategory.trim())) return alert('Kategori sudah ada!');
+        setCategories([...categories, newCategory.trim()]);
+        setNewCategory('');
+      };
+
+      const handleDeleteCategory = (cat) => {
+        if (categories.length <= 1) return alert('Minimal harus ada 1 kategori!');
+        if (window.confirm(`Yakin ingin menghapus kategori "${cat}"?`)) {
+          const newCategories = categories.filter(c => c !== cat);
+          setCategories(newCategories);
+          if (formData.category === cat) setFormData({ ...formData, category: newCategories[0] });
+        }
+      };
+
+      const handleEditCategorySave = (oldCat) => {
+        const trimmedNewCat = editCategoryInput.trim();
+        if (!trimmedNewCat) {
+          setEditingCategory(null);
+          return;
+        }
+        if (trimmedNewCat !== oldCat && categories.includes(trimmedNewCat)) {
+          return alert('Kategori sudah ada!');
+        }
+
+        // Perbarui daftar kategori
+        const newCategories = categories.map(c => c === oldCat ? trimmedNewCat : c);
+        setCategories(newCategories);
+
+        // Perbarui semua produk yang menggunakan kategori lama agar menggunakan yang baru
+        setProducts(prev => prev.map(p => p.category === oldCat ? { ...p, category: trimmedNewCat } : p));
+
+        // Perbarui form jika sedang terpilih kategori yang diubah
+        if (formData.category === oldCat) {
+          setFormData({ ...formData, category: trimmedNewCat });
+        }
+
+        setEditingCategory(null);
+      };
+
+      const handleLogoUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Memvalidasi tipe file gambar
+        if (!file.type.startsWith('image/')) {
+          alert('Tolong unggah file gambar saja!');
+          return;
+        }
+
+        // Batasi ukuran file (misal max 2MB) untuk menjaga performa localStorage
+        if (file.size > 2 * 1024 * 1024) {
+          alert('Ukuran file terlalu besar! Gunakan gambar di bawah 2MB.');
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setStoreInfo({ ...storeInfo, logo: event.target.result });
+        };
+        reader.readAsDataURL(file);
+      };
+
+      // TAMPILAN HALAMAN LOGIN (Jika belum masuk)
+      if (!isAuthenticated) {
+        return (
+          <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans text-gray-800">
+            <div className="bg-white rounded-3xl shadow-xl p-10 w-full max-w-sm flex flex-col items-center border border-gray-100">
+              <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mb-6 overflow-hidden border border-blue-100 shadow-inner">
+                {storeInfo.logo ? (
+                  <img src={storeInfo.logo} alt="Logo" className="w-full h-full object-contain" />
+                ) : (
+                  <Store size={48} />
+                )}
+              </div>
+              <h1 className="text-3xl font-extrabold text-gray-900 mb-2 text-center tracking-tight">{storeInfo.name}</h1>
+              <p className="text-gray-500 mb-10 text-center text-sm font-medium leading-relaxed">Silakan masukkan PIN akses kasir untuk masuk ke sistem.</p>
+              
+              <form onSubmit={handleLogin} className="w-full flex flex-col gap-6">
+                <div className="relative">
+                  <input 
+                    type="password" 
+                    value={loginInput} 
+                    onChange={(e) => setLoginInput(e.target.value)}
+                    placeholder="Masukkan PIN" 
+                    className="w-full border-2 border-gray-200 rounded-2xl p-5 text-center text-2xl tracking-[0.75em] font-black focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all placeholder:tracking-normal placeholder:font-medium placeholder:text-base placeholder:text-gray-300"
+                    autoFocus
+                  />
+                  {loginError && <p className="text-red-500 text-xs mt-3 text-center font-bold">{loginError}</p>}
+                </div>
+                <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 active:scale-95 flex justify-center items-center gap-3 transition-all shadow-lg shadow-blue-200">
+                  <Lock size={20} /> Masuk Sekarang
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <React.Fragment>
+          <style>{`
+            @media print {
+              @page { margin: 0; size: 58mm auto; }
+              body { margin: 0; padding: 10px; background: white; }
+            }
+          `}</style>
+          
+          <div className="min-h-screen bg-gray-50 flex flex-col font-sans print:hidden">
+            {/* Header */}
+            <header className="bg-blue-600 text-white p-4 shadow-md z-10">
+              <div className="max-w-7xl mx-auto flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                    {storeInfo.logo ? (
+                      <img src={storeInfo.logo} className="w-full h-full object-contain p-0.5" />
+                    ) : (
+                      <Store size={24} className="text-blue-600" />
+                    )}
+                  </div>
+                  <h1 className="text-xl font-bold tracking-tight truncate max-w-[150px] sm:max-w-none">{storeInfo.name}</h1>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  {printerDevice ? (
+                    <div className="flex items-center gap-2 bg-green-500/20 text-green-100 px-3 py-1.5 rounded-full text-sm border border-green-400">
+                      <CheckCircle2 size={16} /><span>{printerDevice.name || 'Terhubung'}</span>
+                    </div>
+                  ) : (
+                    <button onClick={connectToPrinter} disabled={isConnecting || !isSupported} className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm hidden sm:flex">
+                      <Printer size={18} />{isConnecting ? 'Menghubungkan...' : 'Hubungkan Printer'}
+                    </button>
+                  )}
+                  
+                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500/20 text-red-100 hover:bg-red-500/30 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border border-red-400" title="Keluar">
+                    <LogOut size={16} className="sm:hidden" />
+                    <span className="hidden sm:inline">Keluar</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            {/* Navigasi Tab */}
+            <nav className="bg-white border-b border-gray-200 px-4 flex gap-6 overflow-x-auto shadow-sm">
+              <button onClick={() => setActiveTab('kasir')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'kasir' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><LayoutDashboard size={18} /> Menu Kasir</button>
+              <button onClick={() => setActiveTab('produk')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'produk' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><PackageSearch size={18} /> Kelola Produk</button>
+              <button onClick={() => setActiveTab('rekap')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'rekap' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><ClipboardList size={18} /> Rekap Penjualan</button>
+              <button onClick={() => setActiveTab('pengaturan')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'pengaturan' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Settings size={18} /> Pengaturan Toko</button>
+            </nav>
+
+            {errorMsg && (
+              <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 m-4 max-w-7xl mx-auto rounded shadow-sm flex items-start gap-3 w-full animate-pulse">
+                <AlertCircle size={20} className="mt-0.5 flex-shrink-0" /><p className="text-sm font-bold">{errorMsg}</p>
+              </div>
+            )}
+
+            <main className="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col lg:flex-row gap-6 overflow-y-auto lg:h-[calc(100vh-140px)]">
+              
+              {/* TAB KASIR */}
+              {activeTab === 'kasir' && (
+                <React.Fragment>
+                  <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px] lg:min-h-0">
+                    <div className="p-5 border-b border-gray-100 bg-gray-50/50"><h2 className="font-bold text-gray-700 text-lg">Daftar Produk</h2></div>
+                    <div className="p-5 overflow-y-auto">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
+                        {products.map((product) => {
+                          const stock = product.stock !== undefined ? product.stock : 0;
+                          const isOutOfStock = stock <= 0;
+                          return (
+                            <button key={product.id} onClick={() => !isOutOfStock && addToCart(product)} disabled={isOutOfStock} className={`flex flex-col items-center p-5 border-2 rounded-2xl transition-all group text-left w-full focus:outline-none focus:ring-4 focus:ring-blue-100 relative ${isOutOfStock ? 'opacity-40 cursor-not-allowed bg-gray-100 border-gray-200' : 'hover:border-blue-500 hover:bg-blue-50/30 border-gray-100 shadow-sm'}`}>
+                              <div className={`absolute top-2 right-2 text-[10px] font-black px-2 py-0.5 rounded-full border ${stock <= 5 ? 'bg-red-500 text-white border-red-600' : 'bg-green-100 text-green-700 border-green-200'}`}>Stok: {stock}</div>
+                              <div className={`p-4 rounded-2xl mb-4 transition-all shadow-inner ${isOutOfStock ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white group-hover:rotate-6'}`}>{getCategoryIcon(product.category)}</div>
+                              <span className="font-bold text-gray-900 text-sm mb-1 text-center line-clamp-2 leading-tight">{product.name}</span>
+                              <span className="text-blue-600 font-black text-sm">{formatRupiah(product.price)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="w-full lg:w-[400px] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[500px] lg:h-full shrink-0">
+                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                      <h2 className="font-bold text-gray-700 text-lg flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Keranjang</h2>
+                      <span className="bg-blue-600 text-white py-1 px-3 rounded-full text-xs font-black shadow-lg shadow-blue-100">{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+                      {cart.length === 0 ? (
+                        <div className="m-auto text-center text-gray-300 flex flex-col items-center"><ShoppingCart size={64} className="mb-4 opacity-10" /><p className="font-bold text-gray-400">Keranjang Kosong</p><p className="text-xs mt-1">Pilih menu di samping</p></div>
+                      ) : (
+                        cart.map((item) => (
+                          <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
+                            <div className="flex-1 pr-3">
+                              <h4 className="font-bold text-gray-800 text-sm leading-tight mb-1">{item.product.name}</h4><p className="text-gray-500 text-xs font-medium">{formatRupiah(item.product.price)}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                <button onClick={() => updateQuantity(item.product.id, -1)} className="p-2 hover:bg-red-50 hover:text-red-600 text-gray-500 transition-colors"><Minus size={14} /></button>
+                                <span className="w-10 text-center text-sm font-black text-gray-700">{item.quantity}</span>
+                                <button onClick={() => updateQuantity(item.product.id, 1)} className="p-2 hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors"><Plus size={14} /></button>
+                              </div>
+                              <button onClick={() => removeFromCart(item.product.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={18} /></button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="p-5 bg-gray-50 border-t border-gray-100 rounded-b-2xl">
+                      <div className="flex justify-between items-center mb-5">
+                        <span className="text-gray-500 font-bold">Total</span><span className="text-3xl font-black text-blue-600">{formatRupiah(total)}</span>
+                      </div>
+                      <button onClick={handlePayment} disabled={cart.length === 0} className={`w-full py-5 rounded-2xl font-black text-white flex justify-center items-center gap-3 shadow-lg transition-all ${cart.length === 0 ? 'bg-gray-300 shadow-none cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}><FileText size={22} /> Bayar Sekarang</button>
+                      {!printerDevice && cart.length > 0 && <p className="text-[10px] text-orange-500 text-center mt-4 font-bold tracking-tight"><AlertCircle size={10} className="inline mr-1 mb-0.5" /> Printer Bluetooth belum terhubung</p>}
+                    </div>
+                  </div>
+                </React.Fragment>
+              )}
+
+              {/* TAB KELOLA PRODUK */}
+              {activeTab === 'produk' && (
+                <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden w-full">
+                  <div className="w-full lg:w-1/3 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-fit">
+                    <h2 className="font-bold text-gray-800 mb-6 flex items-center gap-2 text-xl">{editingId ? <Edit2 size={24} className="text-blue-600"/> : <Plus size={24} className="text-blue-600"/>}{editingId ? 'Edit Produk' : 'Produk Baru'}</h2>
+                    <form onSubmit={handleProductSubmit} className="flex flex-col gap-5">
+                      <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Nama Produk</label><input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Contoh: Kopi Hitam Panas"/></div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Harga (Rp)</label><input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="15000"/></div>
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Stok</label><input required type="number" min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="100"/></div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Kategori</label>
+                        <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white">
+                          {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-3 mt-2">
+                        <button type="submit" className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-100"><Save size={20}/> Simpan</button>
+                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', category: categories[0] || 'Lainnya', stock:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
+                      </div>
+                    </form>
+                  </div>
+
+                  <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
+                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><h2 className="font-bold text-gray-700 text-lg">Inventory ({products.length})</h2></div>
+                    <div className="overflow-y-auto p-0 flex-1 block">
+                      <table className="w-full text-left border-collapse min-w-[500px]">
+                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
+                        <tbody className="text-sm">
+                          {products.map(product => {
+                            const stock = product.stock !== undefined ? product.stock : 0;
+                            return (
+                              <tr key={product.id} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors">
+                                <td className="p-5 font-bold text-gray-800">{product.name}</td>
+                                <td className="p-5"><span className="bg-white px-3 py-1 rounded-full text-[10px] font-black border border-gray-200 text-gray-500 uppercase">{product.category}</span></td>
+                                <td className="p-5 font-black text-blue-600">{formatRupiah(product.price)}</td>
+                                <td className="p-5 text-center">
+                                  <span className={`px-3 py-1 rounded-lg font-black text-xs border ${stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>{stock}</span>
+                                </td>
+                                <td className="p-5 flex justify-center gap-1">
+                                  <button onClick={() => handleEditProduct(product)} className="p-2.5 text-blue-500 hover:bg-blue-100 rounded-xl transition-all" title="Edit"><Edit2 size={16}/></button>
+                                  <button onClick={() => handleDeleteProduct(product.id)} className="p-2.5 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={16}/></button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {products.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-gray-300 font-bold">Belum ada data barang.</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB REKAP */}
+              {activeTab === 'rekap' && (
+                <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
+                   <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                      <h2 className="font-bold text-gray-700 text-lg">Log Penjualan</h2>
+                      <div className="flex items-center gap-3">
+                        <div className="text-xs font-black text-blue-700 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm">
+                          PENDAPATAN: <span className="text-sm ml-1">{formatRupiah(salesHistory.reduce((sum, sale) => sum + sale.total, 0))}</span>
+                        </div>
+                        {salesHistory.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <button onClick={printSalesSummaryAsPDF} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-100 transition-all active:scale-95"><Printer size={16} /> Laporan</button>
+                            <button onClick={() => { if(window.confirm('Bersihkan semua riwayat?')) setSalesHistory([]); }} className="p-2 text-red-500 hover:bg-red-50 rounded-xl border border-red-100 transition-all" title="Reset History"><Trash2 size={18} /></button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="overflow-y-auto p-5 flex flex-col gap-5 flex-1">
+                      {salesHistory.length === 0 ? (
+                        <div className="m-auto text-center text-gray-300 py-16"><ClipboardList size={80} className="mx-auto mb-4 opacity-10" /><p className="font-bold text-gray-400">Belum Ada Transaksi</p></div>
+                      ) : (
+                        salesHistory.map(sale => (
+                          <div key={sale.id} className="border border-gray-100 rounded-2xl p-5 hover:shadow-lg hover:border-blue-200 transition-all bg-white relative group">
+                            <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu</span>
+                                <span className="text-sm text-gray-800 font-bold">{sale.date}</span>
+                              </div>
+                              <div className="flex items-center gap-4 text-right">
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Bayar</span>
+                                  <span className="font-black text-blue-600 text-xl">{formatRupiah(sale.total)}</span>
+                                </div>
+                                <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-3 rounded-2xl transition-all shadow-inner"><FileText size={20} /></button>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {sale.items.map((item, idx) => (
+                                <div key={idx} className="bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 flex items-center gap-2">
+                                  <span className="bg-blue-100 text-blue-600 px-1.5 rounded-md">{item.quantity}x</span>
+                                  {item.product.name}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                </div>
+              )}
+
+              {/* TAB PENGATURAN */}
+              {activeTab === 'pengaturan' && (
+                <div className="flex-1 flex flex-col items-center w-full max-w-4xl mx-auto">
+                  <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mt-4">
+                    <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-2xl pb-4 border-b border-gray-100"><Store size={32} className="text-blue-600"/> Identitas Toko</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {/* Upload Logo - NEW FEATURE */}
+                      <div className="flex flex-col items-center justify-center p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl group relative transition-all hover:border-blue-300">
+                        <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center overflow-hidden mb-4 shadow-inner border border-gray-100 relative group/logo">
+                          {storeInfo.logo ? (
+                            <React.Fragment>
+                              <img src={storeInfo.logo} className="w-full h-full object-contain" />
+                              <button 
+                                onClick={() => setStoreInfo({...storeInfo, logo: ''})}
+                                className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={24} />
+                              </button>
+                            </React.Fragment>
+                          ) : (
+                            <Image size={48} className="text-gray-300 group-hover:text-blue-400 transition-colors" />
+                          )}
+                        </div>
+                        
+                        <input 
+                          type="file" 
+                          ref={fileInputRef}
+                          onChange={handleLogoUpload}
+                          accept="image/*"
+                          className="hidden"
+                        />
+                        
+                        <button 
+                          onClick={() => fileInputRef.current.click()}
+                          className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-4 rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 mb-4"
+                        >
+                          <Upload size={16} /> Pilih dari Perangkat
+                        </button>
+
+                        <div className="w-full">
+                          <label className="block text-[10px] font-black text-gray-400 uppercase mb-1 tracking-widest">Atau via Link URL</label>
+                          <input 
+                            type="text" 
+                            value={storeInfo.logo} 
+                            onChange={e => setStoreInfo({...storeInfo, logo: e.target.value})} 
+                            className="w-full border border-gray-200 rounded-lg p-2 text-[10px] font-medium focus:border-blue-500 outline-none shadow-sm" 
+                            placeholder="https://link-gambar.com/logo.png"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-6">
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Nama Toko</label><input type="text" value={storeInfo.name} onChange={e => setStoreInfo({...storeInfo, name: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none shadow-inner" placeholder="Contoh: Kedai Kopi Senja"/></div>
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Alamat Fisik</label><textarea value={storeInfo.address} onChange={e => setStoreInfo({...storeInfo, address: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none resize-none h-32 shadow-inner" placeholder="Jl. Raya No. 123..."></textarea></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-6 mb-10">
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+                      <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><Lock size={24} className="text-blue-600"/> Keamanan (Ubah PIN)</h2>
+                      <form onSubmit={handleChangePin} className="flex flex-col gap-4">
+                        {pinMessage.text && (
+                          <div className={`p-4 rounded-xl text-xs font-bold border animate-bounce ${pinMessage.type === 'error' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                            {pinMessage.text}
+                          </div>
+                        )}
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">PIN Saat Ini</label><input required type="password" value={oldPinInput} onChange={e => setOldPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-4 text-center font-black tracking-widest outline-none focus:border-red-400" /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">PIN Baru</label><input required type="password" value={newPinInput} onChange={e => setNewPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-4 text-center font-black tracking-widest outline-none focus:border-blue-400" /></div>
+                          <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Konfirmasi</label><input required type="password" value={confirmPinInput} onChange={e => setConfirmPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-4 text-center font-black tracking-widest outline-none focus:border-blue-400" /></div>
+                        </div>
+                        <button type="submit" className="mt-4 w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-black transition-all active:scale-95 shadow-lg shadow-gray-200">Ganti PIN Akses</button>
+                      </form>
+                    </div>
+
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+                      <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><PackageSearch size={24} className="text-blue-600"/> Master Kategori</h2>
+                      <div className="flex gap-2 mb-6">
+                        <input type="text" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Nama Kategori..." className="flex-1 border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none shadow-inner"/>
+                        <button onClick={handleAddCategory} className="px-6 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all active:scale-95 shadow-md shadow-blue-100"><Plus size={20}/></button>
+                      </div>
+                      <div className="flex flex-col gap-2 max-h-[250px] overflow-y-auto pr-2">
+                        {categories.map(cat => (
+                          editingCategory === cat ? (
+                            <div key={cat} className="flex items-center gap-2 bg-blue-50 p-2 rounded-xl border-2 border-blue-200">
+                              <input type="text" value={editCategoryInput} onChange={e => setEditCategoryInput(e.target.value)} className="flex-1 bg-white border-2 border-blue-100 rounded-lg p-3 text-sm font-bold focus:border-blue-500 outline-none" autoFocus />
+                              <button onClick={() => handleEditCategorySave(cat)} className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all active:scale-95"><Save size={18}/></button>
+                              <button onClick={() => setEditingCategory(null)} className="p-3 bg-white text-gray-400 rounded-lg border border-gray-200"><X size={18}/></button>
+                            </div>
+                          ) : (
+                            <div key={cat} className="flex items-center justify-between bg-gray-50 px-5 py-4 rounded-2xl text-sm font-bold text-gray-700 border border-gray-100 hover:border-blue-200 hover:bg-white transition-all shadow-sm">
+                              <span>{cat}</span>
+                              <div className="flex items-center gap-1 sm:opacity-100">
+                                <button onClick={() => { setEditingCategory(cat); setEditCategoryInput(cat); }} className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg"><Edit2 size={16}/></button>
+                                <button onClick={() => handleDeleteCategory(cat)} className="text-red-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                              </div>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MODAL PEMBAYARAN */}
+              {showPaymentModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-white/20 animate-in zoom-in-95 duration-200">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                      <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Pembayaran</h3>
+                      <button onClick={() => setShowPaymentModal(false)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
+                    </div>
+                    <div className="p-8 flex flex-col gap-6">
+                      <div className="flex justify-between items-center text-lg font-bold bg-blue-50 p-6 rounded-3xl border border-blue-100">
+                        <span className="text-blue-500 text-sm uppercase tracking-widest">Total</span>
+                        <span className="text-blue-700 text-3xl font-black">{formatRupiah(total)}</span>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Uang Tunai Diterima (Rp)</label>
+                        <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-4 border-gray-50 bg-gray-50 rounded-3xl p-6 text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setCashAmount(total)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
+                        <button onClick={() => setCashAmount(total > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{total > 50000 ? '100.000' : '50.000'}</button>
+                      </div>
+                      <div className="flex flex-col items-center mt-2 p-6 rounded-3xl bg-gray-900 text-white shadow-xl">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
+                        <span className={`text-3xl font-black ${changeAmount < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                          {cashAmount === '' ? '-' : formatRupiah(changeAmount)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-6 bg-gray-50 border-t border-gray-100">
+                      <button onClick={processPayment} disabled={cashAmount === '' || changeAmount < 0} className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all active:scale-95 shadow-lg shadow-blue-100">
+                        Proses Transaksi
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MODAL PREVIEW STRUK */}
+              {currentReceipt && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-200">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                      <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Struk Berhasil</h3>
+                      <button onClick={() => setCurrentReceipt(null)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto p-8 bg-gray-100 flex justify-center shadow-inner">
+                      <div className="bg-white w-full shadow-2xl p-6 font-mono text-[10px] text-gray-800 flex flex-col border border-gray-200 rounded-md relative overflow-hidden" style={{ maxWidth: '300px' }}>
+                        {storeInfo.logo && <img src={storeInfo.logo} className="w-16 h-16 object-contain mx-auto mb-4" />}
+                        <div className="text-center font-black text-sm mb-1 uppercase tracking-tighter">{storeInfo.name}</div>
+                        <div className="text-center text-[8px] mb-4 pb-4 border-b border-dashed border-gray-300 leading-tight uppercase font-bold text-gray-400">{storeInfo.address}</div>
+                        
+                        <div className="mb-4 flex justify-between font-bold text-gray-500">
+                          <span>WAKTU:</span>
+                          <span className="text-gray-800">{currentReceipt.date}</span>
+                        </div>
+                        
+                        <div className="flex flex-col gap-2 mb-4 pb-4 border-b border-dashed border-gray-300">
+                          {currentReceipt.items.map((item, idx) => (
+                            <div key={idx}>
+                              <div className="font-black text-gray-900 mb-0.5">{item.product.name}</div>
+                              <div className="flex justify-between font-bold text-gray-500">
+                                <span>{item.quantity} x {formatRupiah(item.product.price)}</span>
+                                <span className="text-gray-900">{formatRupiah(item.quantity * item.product.price)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div className="flex justify-between font-black text-sm mb-1"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
+                        <div className="flex justify-between font-bold text-gray-400 mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
+                        <div className="flex justify-between font-black text-gray-900 mb-6"><span>KEMBALIAN</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+                        
+                        <div className="text-center font-black border-t border-dashed border-gray-300 pt-4 text-gray-400 tracking-widest uppercase">LUNAS</div>
+                        <div className="text-center text-[8px] mt-1 font-bold text-gray-400">Terima Kasih Atas Kunjungan Anda</div>
+                      </div>
+                    </div>
+
+                    <div className="p-6 bg-white border-t border-gray-100 flex flex-col gap-3">
+                      <button onClick={() => printBluetooth(currentReceipt)} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 flex justify-center items-center gap-3 transition-all shadow-lg shadow-blue-100 active:scale-95">
+                        <Printer size={20} /> Cetak Struk (BT)
+                      </button>
+                      <button onClick={printReceiptAsPDF} className="w-full py-4 bg-white text-gray-800 rounded-2xl font-black hover:bg-gray-50 flex justify-center items-center gap-3 border-2 border-gray-100 transition-all active:scale-95">
+                        <FileText size={20} /> Simpan PDF / Web
+                      </button>
+                      <button onClick={() => setCurrentReceipt(null)} className="w-full py-3 bg-red-50 text-red-500 rounded-2xl font-black hover:bg-red-100 transition-all text-xs">Selesai</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </main>
+          </div>
+
+          {/* MODE CETAK TERSEMBUNYI */}
+          {currentReceipt && (
+            <div className="hidden print:block font-mono text-black bg-white w-full mx-auto text-[10px] leading-tight" style={{ maxWidth: '58mm' }}>
+              {storeInfo.logo && <img src={storeInfo.logo} style={{ width: '30mm', display: 'block', margin: '0 auto 5mm auto' }} />}
+              <div className="text-center font-bold text-sm mb-1">{storeInfo.name}</div>
+              <div className="text-center text-[8px] mb-3 pb-3 border-b border-dashed border-black">{storeInfo.address}</div>
+              
+              <div className="text-[8px] mb-2">Tanggal: {currentReceipt.date}</div>
+              
+              <div className="flex flex-col gap-1.5 mb-3 pb-3 border-b border-dashed border-black">
+                {currentReceipt.items.map((item, idx) => (
+                  <div key={idx}>
+                    <div className="font-bold">{item.product.name}</div>
+                    <div className="flex justify-between">
+                      <span>{item.quantity}x {formatRupiah(item.product.price)}</span>
+                      <span>{formatRupiah(item.quantity * item.product.price)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="flex justify-between font-bold text-sm mb-1"><span>TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
+              <div className="flex justify-between text-[8px] mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
+              <div className="flex justify-between text-[8px] font-bold mb-5"><span>KEMBALI</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+              
+              <div className="text-center text-[8px]">Terima Kasih</div>
+              <div className="text-center text-[8px]">Silakan datang kembali :)</div>
+            </div>
+          )}
+        </React.Fragment>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
