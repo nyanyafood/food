@@ -46,16 +46,20 @@
     const Upload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></Icon>;
     const Download = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></Icon>;
     const Database = (p) => <Icon {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></Icon>;
+    const Search = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></Icon>;
+    const ScanBarcode = (p) => <Icon {...p}><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8"/><path d="M12 8v8"/><path d="M17 8v8"/></Icon>;
+    const QrCode = (p) => <Icon {...p}><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h-2z"/><path d="M19 15h2v2h-2z"/><path d="M15 19h2v2h-2z"/><path d="M19 19h2v2h-2z"/></Icon>;
+    const User = (p) => <Icon {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>;
 
     const INITIAL_PRODUCTS = [
-      { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, category: 'Minuman', stock: 50 },
-      { id: 2, name: 'Americano', price: 15000, category: 'Minuman', stock: 50 },
-      { id: 3, name: 'Matcha Latte', price: 22000, category: 'Minuman', stock: 40 },
-      { id: 4, name: 'Nasi Goreng Spesial', price: 25000, category: 'Makanan', stock: 30 },
-      { id: 5, name: 'Mie Goreng Telur', price: 15000, category: 'Makanan', stock: 35 },
-      { id: 6, name: 'Kentang Goreng', price: 12000, category: 'Cemilan', stock: 100 },
-      { id: 7, name: 'Roti Bakar Coklat', price: 15000, category: 'Cemilan', stock: 25 },
-      { id: 8, name: 'Es Teh Manis', price: 5000, category: 'Minuman', stock: 100 },
+      { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, category: 'Minuman', stock: 50, barcode: '1111' },
+      { id: 2, name: 'Americano', price: 15000, category: 'Minuman', stock: 50, barcode: '2222' },
+      { id: 3, name: 'Matcha Latte', price: 22000, category: 'Minuman', stock: 40, barcode: '3333' },
+      { id: 4, name: 'Nasi Goreng Spesial', price: 25000, category: 'Makanan', stock: 30, barcode: '4444' },
+      { id: 5, name: 'Mie Goreng Telur', price: 15000, category: 'Makanan', stock: 35, barcode: '5555' },
+      { id: 6, name: 'Kentang Goreng', price: 12000, category: 'Cemilan', stock: 100, barcode: '6666' },
+      { id: 7, name: 'Roti Bakar Coklat', price: 15000, category: 'Cemilan', stock: 25, barcode: '7777' },
+      { id: 8, name: 'Es Teh Manis', price: 5000, category: 'Minuman', stock: 100, barcode: '8888' },
     ];
 
     function App() {
@@ -70,7 +74,18 @@
       
       const [products, setProducts] = useState(() => { const saved = localStorage.getItem('pos_products'); return saved ? JSON.parse(saved) : INITIAL_PRODUCTS; });
       const [salesHistory, setSalesHistory] = useState(() => { const saved = localStorage.getItem('pos_sales'); return saved ? JSON.parse(saved) : []; });
-      const [storeInfo, setStoreInfo] = useState(() => { const saved = localStorage.getItem('pos_store_info'); return saved ? JSON.parse(saved) : { name: 'POS Kasir Mini', address: 'Jl. GitHub Pages No. 1', logo: '' }; });
+      const [storeInfo, setStoreInfo] = useState(() => { 
+        const saved = localStorage.getItem('pos_store_info'); 
+        const parsed = saved ? JSON.parse(saved) : {};
+        return { 
+          name: parsed.name || 'POS Kasir Mini', 
+          address: parsed.address || 'Jl. GitHub Pages No. 1', 
+          logo: parsed.logo || '',
+          cashierName: parsed.cashierName || 'Kasir Utama',
+          qrisImage: parsed.qrisImage || '',
+          bankInfo: parsed.bankInfo || ''
+        }; 
+      });
       const [categories, setCategories] = useState(() => { const saved = localStorage.getItem('pos_categories'); return saved ? JSON.parse(saved) : ['Minuman', 'Makanan', 'Cemilan', 'Lainnya']; });
       
       const [newCategory, setNewCategory] = useState('');
@@ -78,10 +93,15 @@
       const [editCategoryInput, setEditCategoryInput] = useState('');
       
       const [editingId, setEditingId] = useState(null);
-      const [formData, setFormData] = useState({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '' });
+      const [formData, setFormData] = useState({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       const [currentReceipt, setCurrentReceipt] = useState(null);
       const [showPaymentModal, setShowPaymentModal] = useState(false);
       const [cashAmount, setCashAmount] = useState('');
+      const [paymentMethod, setPaymentMethod] = useState('Tunai'); // 'Tunai' | 'Online'
+
+      const [searchTerm, setSearchTerm] = useState('');
+      const barcodeBuffer = useRef('');
+      const barcodeTimeout = useRef(null);
 
       const [isAuthenticated, setIsAuthenticated] = useState(false);
       const [pinCode, setPinCode] = useState(() => localStorage.getItem('pos_pin') || '1234');
@@ -94,7 +114,8 @@
       const [pinMessage, setPinMessage] = useState({ type: '', text: '' });
 
       const fileInputRef = useRef(null);
-      const importFileRef = useRef(null); // Ref untuk fitur import
+      const importFileRef = useRef(null); 
+      const qrisInputRef = useRef(null);
 
       // --- EFEK SIMPAN OTOMATIS ---
       useEffect(() => { localStorage.setItem('pos_products', JSON.stringify(products)); }, [products]);
@@ -103,17 +124,37 @@
       useEffect(() => { localStorage.setItem('pos_pin', pinCode); }, [pinCode]);
       useEffect(() => { localStorage.setItem('pos_categories', JSON.stringify(categories)); }, [categories]);
 
-      // --- FITUR BACKUP & RESTORE DATA ---
+      // --- LISTENER SCANNER BARCODE ---
+      useEffect(() => {
+        if (activeTab !== 'kasir') return;
+        
+        const handleKeyDown = (e) => {
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+          
+          if (e.key === 'Enter') {
+            if (barcodeBuffer.current) {
+              const code = barcodeBuffer.current;
+              barcodeBuffer.current = '';
+              const product = products.find(p => p.barcode === code);
+              if (product) addToCart(product);
+              else alert('Barcode ' + code + ' tidak ditemukan di database produk!');
+            }
+          } else if (e.key.length === 1) {
+            barcodeBuffer.current += e.key;
+            clearTimeout(barcodeTimeout.current);
+            barcodeTimeout.current = setTimeout(() => { barcodeBuffer.current = ''; }, 300);
+          }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [activeTab, products]);
+
       const handleBackupData = () => {
         const backupData = {
-          products,
-          salesHistory,
-          storeInfo,
-          categories,
-          pinCode,
+          products, salesHistory, storeInfo, categories, pinCode,
           exportDate: new Date().toISOString()
         };
-        
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData));
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.setAttribute("href", dataStr);
@@ -126,7 +167,6 @@
       const handleRestoreData = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = (event) => {
           try {
@@ -134,10 +174,13 @@
             if (importedData.products && importedData.salesHistory && importedData.storeInfo) {
               setProducts(importedData.products);
               setSalesHistory(importedData.salesHistory);
-              setStoreInfo(importedData.storeInfo);
+              setStoreInfo({
+                ...importedData.storeInfo,
+                qrisImage: importedData.storeInfo.qrisImage || '',
+                bankInfo: importedData.storeInfo.bankInfo || ''
+              });
               if (importedData.categories) setCategories(importedData.categories);
               if (importedData.pinCode) setPinCode(importedData.pinCode);
-              
               alert("Data berhasil dikembalikan (Restore)! Aplikasi siap digunakan.");
             } else {
               alert("Format file tidak valid atau rusak!");
@@ -148,7 +191,7 @@
           }
         };
         reader.readAsText(file);
-        e.target.value = ''; // Reset input
+        e.target.value = '';
       };
 
       const getCategoryIcon = (category) => {
@@ -169,12 +212,12 @@
         } else {
           setProducts([...products, { id: Date.now(), ...formData, price: Number(formData.price), stock: Number(formData.stock) }]);
         }
-        setFormData({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '' });
+        setFormData({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       };
 
       const handleEditProduct = (product) => {
         setEditingId(product.id);
-        setFormData({ name: product.name, price: product.price, category: product.category, stock: product.stock !== undefined ? product.stock : 0 });
+        setFormData({ name: product.name, price: product.price, category: product.category, stock: product.stock !== undefined ? product.stock : 0, barcode: product.barcode || '' });
         setActiveTab('produk');
       };
 
@@ -317,6 +360,7 @@
             ${storeInfo.logo ? `<img src="${storeInfo.logo}" class="receipt-logo" />` : ''}
             <div class="text-center font-bold" style="font-size:14px; margin-bottom:4px;">${storeInfo.name}</div>
             <div class="text-center" style="font-size:10px; margin-bottom:15px;">${storeInfo.address}</div>
+            <div style="font-size: 10px; margin-bottom: 2px;">Kasir: ${currentReceipt.cashier || storeInfo.cashierName}</div>
             <div style="font-size: 10px; margin-bottom: 8px;">Tanggal: ${currentReceipt.date}</div>
             <div class="divider"></div>
             <table>
@@ -328,8 +372,11 @@
             <div class="divider"></div>
             <table>
               <tr><td class="font-bold" style="font-size:14px;">TOTAL</td><td class="text-right font-bold" style="font-size:14px;">${formatRupiah(currentReceipt.total)}</td></tr>
-              <tr><td class="font-bold" style="font-size:12px;">TUNAI</td><td class="text-right" style="font-size:12px;">${formatRupiah(currentReceipt.cash || 0)}</td></tr>
-              <tr><td class="font-bold" style="font-size:12px;">KEMBALI</td><td class="text-right font-bold" style="font-size:12px;">${formatRupiah(currentReceipt.change || 0)}</td></tr>
+              <tr><td class="font-bold" style="font-size:12px;">METODE</td><td class="text-right font-bold" style="font-size:12px; text-transform:uppercase;">${currentReceipt.paymentMethod || 'Tunai'}</td></tr>
+              ${currentReceipt.paymentMethod !== 'Online' ? `
+                <tr><td class="font-bold" style="font-size:12px;">TUNAI</td><td class="text-right" style="font-size:12px;">${formatRupiah(currentReceipt.cash || 0)}</td></tr>
+                <tr><td class="font-bold" style="font-size:12px;">KEMBALI</td><td class="text-right font-bold" style="font-size:12px;">${formatRupiah(currentReceipt.change || 0)}</td></tr>
+              ` : ''}
             </table>
             <div class="divider"></div>
             <div class="text-center" style="font-size: 10px; margin-top: 10px;">Terima Kasih</div>
@@ -428,6 +475,9 @@
           receiptText += padCenter(storeInfo.name, 32) + "\n";
           receiptText += padCenter(storeInfo.address, 32) + "\n";
           receiptText += "================================\n";
+          receiptText += `KASIR  : ${saleData.cashier || storeInfo.cashierName}\n`;
+          receiptText += `TANGGAL: ${saleData.date}\n`;
+          receiptText += "================================\n";
           
           saleData.items.forEach(item => {
             receiptText += `${item.product.name}\n`;
@@ -443,15 +493,22 @@
           const totalSpaces = 32 - totalLabel.length - totalStr.length;
           receiptText += `${totalLabel}${totalSpaces > 0 ? ' '.repeat(totalSpaces) : ' '}${totalStr}\n`;
           
-          const cashStr = `${saleData.cash || 0}`;
-          const cashLabel = "TUNAI:";
-          const cashSpaces = 32 - cashLabel.length - cashStr.length;
-          receiptText += `${cashLabel}${cashSpaces > 0 ? ' '.repeat(cashSpaces) : ' '}${cashStr}\n`;
+          const methodStr = `${saleData.paymentMethod || 'Tunai'}`.toUpperCase();
+          const methodLabel = "METODE:";
+          const methodSpaces = 32 - methodLabel.length - methodStr.length;
+          receiptText += `${methodLabel}${methodSpaces > 0 ? ' '.repeat(methodSpaces) : ' '}${methodStr}\n`;
 
-          const changeStr = `${saleData.change || 0}`;
-          const changeLabel = "KEMBALI:";
-          const changeSpaces = 32 - changeLabel.length - changeStr.length;
-          receiptText += `${changeLabel}${changeSpaces > 0 ? ' '.repeat(changeSpaces) : ' '}${changeStr}\n`;
+          if (saleData.paymentMethod !== 'Online') {
+            const cashStr = `${saleData.cash || 0}`;
+            const cashLabel = "TUNAI:";
+            const cashSpaces = 32 - cashLabel.length - cashStr.length;
+            receiptText += `${cashLabel}${cashSpaces > 0 ? ' '.repeat(cashSpaces) : ' '}${cashStr}\n`;
+
+            const changeStr = `${saleData.change || 0}`;
+            const changeLabel = "KEMBALI:";
+            const changeSpaces = 32 - changeLabel.length - changeStr.length;
+            receiptText += `${changeLabel}${changeSpaces > 0 ? ' '.repeat(changeSpaces) : ' '}${changeStr}\n`;
+          }
           
           receiptText += "================================\n";
           receiptText += "          Terima Kasih         \n   Silakan datang kembali :)   \n\n\n";
@@ -466,12 +523,26 @@
       const handlePayment = () => {
         if (cart.length === 0) return alert('Keranjang kosong!');
         setCashAmount('');
+        setPaymentMethod('Tunai');
         setShowPaymentModal(true);
       };
 
       const processPayment = () => {
-        if (changeAmount < 0) return alert('Uang tunai kurang!');
-        const newSale = { id: Date.now(), date: new Date().toLocaleString('id-ID'), items: [...cart], total, cash: Number(cashAmount), change: changeAmount };
+        if (paymentMethod === 'Tunai' && changeAmount < 0) return alert('Uang tunai kurang!');
+        
+        const finalCash = paymentMethod === 'Online' ? total : Number(cashAmount);
+        const finalChange = paymentMethod === 'Online' ? 0 : changeAmount;
+
+        const newSale = { 
+          id: Date.now(), 
+          date: new Date().toLocaleString('id-ID'), 
+          items: [...cart], 
+          total, 
+          cash: finalCash, 
+          change: finalChange,
+          paymentMethod,
+          cashier: storeInfo.cashierName || 'Kasir'
+        };
         
         setProducts(prevProducts => prevProducts.map(p => {
           const cartItem = cart.find(c => c.product.id === p.id);
@@ -566,6 +637,17 @@
         reader.readAsDataURL(file);
       };
 
+      const handleQrisUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) return alert('Tolong unggah file gambar saja!');
+        if (file.size > 2 * 1024 * 1024) return alert('Ukuran file terlalu besar! Gunakan gambar di bawah 2MB.');
+
+        const reader = new FileReader();
+        reader.onload = (event) => setStoreInfo({ ...storeInfo, qrisImage: event.target.result });
+        reader.readAsDataURL(file);
+      };
+
       if (!isAuthenticated) {
         return (
           <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans text-gray-800">
@@ -603,6 +685,9 @@
                 </div>
 
                 <div className="flex items-center gap-4">
+                  <div className="hidden md:flex items-center gap-2 bg-blue-700/50 px-3 py-1.5 rounded-lg text-sm font-bold border border-blue-500">
+                    <User size={16} /> <span className="truncate max-w-[100px]">{storeInfo.cashierName || 'Kasir'}</span>
+                  </div>
                   {printerDevice ? (
                     <div className="flex items-center gap-2 bg-green-500/20 text-green-100 px-3 py-1.5 rounded-full text-sm border border-green-400"><CheckCircle2 size={16} /><span>{printerDevice.name || 'Terhubung'}</span></div>
                   ) : (
@@ -627,10 +712,31 @@
               {activeTab === 'kasir' && (
                 <React.Fragment>
                   <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px] lg:min-h-0">
-                    <div className="p-5 border-b border-gray-100 bg-gray-50/50"><h2 className="font-bold text-gray-700 text-lg">Daftar Produk</h2></div>
+                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
+                      <h2 className="font-bold text-gray-700 text-lg">Daftar Produk</h2>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search size={18} className="text-gray-400" /></div>
+                        <input 
+                          type="text" 
+                          value={searchTerm} 
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const product = products.find(p => p.barcode === searchTerm);
+                              if (product) { addToCart(product); setSearchTerm(''); }
+                            }
+                          }}
+                          className="w-full pl-12 pr-12 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all shadow-inner" 
+                          placeholder="Cari nama produk atau scan barcode di sini..."
+                        />
+                        <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none"><ScanBarcode size={18} className="text-gray-400" /></div>
+                      </div>
+                    </div>
                     <div className="p-5 overflow-y-auto">
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
-                        {products.map((product) => {
+                        {products
+                          .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || (p.barcode && p.barcode.includes(searchTerm)))
+                          .map((product) => {
                           const stock = product.stock !== undefined ? product.stock : 0;
                           const isOutOfStock = stock <= 0;
                           return (
@@ -685,15 +791,21 @@
                         <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Harga (Rp)</label><input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="15000"/></div>
                         <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Stok</label><input required type="number" min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="100"/></div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Kategori</label>
-                        <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white">
-                          {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                        </select>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">Kategori</label>
+                          <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white">
+                            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode</label>
+                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Opsional"/>
+                        </div>
                       </div>
                       <div className="flex gap-3 mt-2">
                         <button type="submit" className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-100"><Save size={20}/> Simpan</button>
-                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', category: categories[0] || 'Lainnya', stock:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
+                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', category: categories[0] || 'Lainnya', stock:'', barcode:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
                       </div>
                     </form>
                   </div>
@@ -702,13 +814,16 @@
                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><h2 className="font-bold text-gray-700 text-lg">Inventory ({products.length})</h2></div>
                     <div className="overflow-y-auto p-0 flex-1 block">
                       <table className="w-full text-left border-collapse min-w-[500px]">
-                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
+                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
                         <tbody className="text-sm">
                           {products.map(product => {
                             const stock = product.stock !== undefined ? product.stock : 0;
                             return (
                               <tr key={product.id} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors">
-                                <td className="p-5 font-bold text-gray-800">{product.name}</td>
+                                <td className="p-5 font-bold text-gray-800">
+                                  {product.name}
+                                  {product.barcode && <div className="text-[10px] text-gray-400 font-medium flex items-center gap-1 mt-1"><ScanBarcode size={12}/> {product.barcode}</div>}
+                                </td>
                                 <td className="p-5"><span className="bg-white px-3 py-1 rounded-full text-[10px] font-black border border-gray-200 text-gray-500 uppercase">{product.category}</span></td>
                                 <td className="p-5 font-black text-blue-600">{formatRupiah(product.price)}</td>
                                 <td className="p-5 text-center"><span className={`px-3 py-1 rounded-lg font-black text-xs border ${stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>{stock}</span></td>
@@ -748,7 +863,7 @@
                         salesHistory.map(sale => (
                           <div key={sale.id} className="border border-gray-100 rounded-2xl p-5 hover:shadow-lg hover:border-blue-200 transition-all bg-white relative group">
                             <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
-                              <div className="flex flex-col"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu</span><span className="text-sm text-gray-800 font-bold">{sale.date}</span></div>
+                              <div className="flex flex-col"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu & Kasir</span><span className="text-sm text-gray-800 font-bold">{sale.date}</span><span className="text-xs text-gray-500 font-medium mt-0.5"><User size={10} className="inline mr-1 mb-0.5"/>{sale.cashier || 'Kasir'}</span></div>
                               <div className="flex items-center gap-4 text-right">
                                 <div className="flex flex-col"><span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Bayar</span><span className="font-black text-blue-600 text-xl">{formatRupiah(sale.total)}</span></div>
                                 <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-3 rounded-2xl transition-all shadow-inner"><FileText size={20} /></button>
@@ -769,7 +884,6 @@
               {activeTab === 'pengaturan' && (
                 <div className="flex-1 flex flex-col items-center w-full max-w-4xl mx-auto">
                   
-                  {/* --- NEW SECTION: DATABASE & SINKRONISASI --- */}
                   <div className="w-full bg-gray-900 text-white rounded-3xl shadow-xl border border-gray-800 p-8 mt-4 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none"><Database size={150} /></div>
                     <div className="relative z-10">
@@ -809,7 +923,37 @@
                       </div>
                       <div className="flex flex-col gap-6">
                         <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Nama Toko</label><input type="text" value={storeInfo.name} onChange={e => setStoreInfo({...storeInfo, name: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none shadow-inner" placeholder="Contoh: Kedai Kopi Senja"/></div>
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Alamat Fisik</label><textarea value={storeInfo.address} onChange={e => setStoreInfo({...storeInfo, address: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none resize-none h-32 shadow-inner" placeholder="Jl. Raya No. 123..."></textarea></div>
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Nama Kasir / Operator</label><input type="text" value={storeInfo.cashierName || ''} onChange={e => setStoreInfo({...storeInfo, cashierName: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none shadow-inner" placeholder="Contoh: Budi"/></div>
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Alamat Fisik</label><textarea value={storeInfo.address} onChange={e => setStoreInfo({...storeInfo, address: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none resize-none h-24 shadow-inner" placeholder="Jl. Raya No. 123..."></textarea></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* --- NEW SECTION: PENGATURAN PEMBAYARAN ONLINE --- */}
+                  <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mt-6">
+                    <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-2xl pb-4 border-b border-gray-100"><QrCode size={32} className="text-blue-600"/> Info Pembayaran Online</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="flex flex-col items-center justify-center p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl group relative transition-all hover:border-blue-300">
+                        <div className="w-40 h-40 bg-white rounded-3xl flex items-center justify-center overflow-hidden mb-4 shadow-inner border border-gray-100 relative group/qris">
+                          {storeInfo.qrisImage ? (
+                            <React.Fragment>
+                              <img src={storeInfo.qrisImage} className="w-full h-full object-contain" />
+                              <button onClick={() => setStoreInfo({...storeInfo, qrisImage: ''})} className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover/qris:opacity-100 transition-opacity"><Trash2 size={24} /></button>
+                            </React.Fragment>
+                          ) : ( <QrCode size={48} className="text-gray-300 group-hover:text-blue-400 transition-colors" /> )}
+                        </div>
+                        <input type="file" ref={qrisInputRef} onChange={handleQrisUpload} accept="image/*" className="hidden" />
+                        <button onClick={() => qrisInputRef.current.click()} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-4 rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 mb-4"><Upload size={16} /> Upload QRIS (Maks 2MB)</button>
+                        <div className="w-full"><label className="block text-[10px] font-black text-gray-400 uppercase mb-1 tracking-widest">Atau via Link URL</label><input type="text" value={storeInfo.qrisImage || ''} onChange={e => setStoreInfo({...storeInfo, qrisImage: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2 text-[10px] font-medium focus:border-blue-500 outline-none shadow-sm" placeholder="https://link.com/qris.png" /></div>
+                      </div>
+                      <div className="flex flex-col gap-6">
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Info Rekening / E-Wallet</label>
+                          <textarea value={storeInfo.bankInfo || ''} onChange={e => setStoreInfo({...storeInfo, bankInfo: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none resize-none h-32 shadow-inner" placeholder="Contoh:&#10;BCA: 123456789 a.n Toko&#10;OVO: 08123456789"></textarea>
+                        </div>
+                        <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-xs font-bold border border-blue-100 flex gap-2">
+                          <AlertCircle size={16} className="shrink-0"/> QRIS dan Info Rekening ini akan ditampilkan kepada pelanggan saat Anda memilih metode pembayaran Online di Kasir.
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -869,21 +1013,45 @@
                       <div className="flex justify-between items-center text-lg font-bold bg-blue-50 p-6 rounded-3xl border border-blue-100">
                         <span className="text-blue-500 text-sm uppercase tracking-widest">Total</span><span className="text-blue-700 text-3xl font-black">{formatRupiah(total)}</span>
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Uang Tunai Diterima (Rp)</label>
-                        <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-4 border-gray-50 bg-gray-50 rounded-3xl p-6 text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
+
+                      <div className="flex bg-gray-100 p-1.5 rounded-2xl">
+                        <button onClick={() => setPaymentMethod('Tunai')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${paymentMethod === 'Tunai' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tunai</button>
+                        <button onClick={() => setPaymentMethod('Online')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${paymentMethod === 'Online' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><QrCode size={16}/> QRIS / Transfer</button>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => setCashAmount(total)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
-                        <button onClick={() => setCashAmount(total > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{total > 50000 ? '100.000' : '50.000'}</button>
-                      </div>
-                      <div className="flex flex-col items-center mt-2 p-6 rounded-3xl bg-gray-900 text-white shadow-xl">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
-                        <span className={`text-3xl font-black ${changeAmount < 0 ? 'text-red-400' : 'text-green-400'}`}>{cashAmount === '' ? '-' : formatRupiah(changeAmount)}</span>
-                      </div>
+
+                      {paymentMethod === 'Tunai' ? (
+                        <React.Fragment>
+                          <div>
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Uang Tunai Diterima (Rp)</label>
+                            <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-4 border-gray-50 bg-gray-50 rounded-3xl p-6 text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <button onClick={() => setCashAmount(total)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
+                            <button onClick={() => setCashAmount(total > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{total > 50000 ? '100.000' : '50.000'}</button>
+                          </div>
+                          <div className="flex flex-col items-center mt-2 p-6 rounded-3xl bg-gray-900 text-white shadow-xl">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
+                            <span className={`text-3xl font-black ${changeAmount < 0 ? 'text-red-400' : 'text-green-400'}`}>{cashAmount === '' ? '-' : formatRupiah(changeAmount)}</span>
+                          </div>
+                        </React.Fragment>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed border-blue-200 rounded-3xl bg-blue-50/50 h-full max-h-[300px] overflow-y-auto">
+                          {storeInfo.qrisImage ? (
+                            <img src={storeInfo.qrisImage} alt="QRIS" className="w-32 h-32 object-contain mb-3 rounded-lg shadow-sm border border-gray-200 bg-white p-1" />
+                          ) : (
+                            <QrCode size={48} className="text-blue-300 mb-4" />
+                          )}
+                          <p className="text-sm font-bold text-blue-800 text-center mb-1">Menunggu Pembayaran Online</p>
+                          {storeInfo.bankInfo ? (
+                            <div className="text-xs text-blue-700 text-center mt-2 whitespace-pre-line bg-white p-3 rounded-xl border border-blue-100 w-full">{storeInfo.bankInfo}</div>
+                          ) : (
+                            <p className="text-xs text-blue-500 text-center max-w-[200px]">Pastikan dana sudah masuk ke rekening/E-Wallet sebelum memproses.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="p-6 bg-gray-50 border-t border-gray-100">
-                      <button onClick={processPayment} disabled={cashAmount === '' || changeAmount < 0} className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all active:scale-95 shadow-lg shadow-blue-100">Proses Transaksi</button>
+                      <button onClick={processPayment} disabled={paymentMethod === 'Tunai' && (cashAmount === '' || changeAmount < 0)} className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all active:scale-95 shadow-lg shadow-blue-100">Proses Transaksi</button>
                     </div>
                   </div>
                 </div>
@@ -904,7 +1072,9 @@
                         <div className="text-center font-black text-sm mb-1 uppercase tracking-tighter">{storeInfo.name}</div>
                         <div className="text-center text-[8px] mb-4 pb-4 border-b border-dashed border-gray-300 leading-tight uppercase font-bold text-gray-400">{storeInfo.address}</div>
                         
+                        <div className="mb-1 flex justify-between font-bold text-gray-500"><span>KASIR:</span><span className="text-gray-800">{currentReceipt.cashier || storeInfo.cashierName}</span></div>
                         <div className="mb-4 flex justify-between font-bold text-gray-500"><span>WAKTU:</span><span className="text-gray-800">{currentReceipt.date}</span></div>
+                        
                         <div className="flex flex-col gap-2 mb-4 pb-4 border-b border-dashed border-gray-300">
                           {currentReceipt.items.map((item, idx) => (
                             <div key={idx}>
@@ -915,10 +1085,15 @@
                         </div>
                         
                         <div className="flex justify-between font-black text-sm mb-1"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
-                        <div className="flex justify-between font-bold text-gray-400 mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
-                        <div className="flex justify-between font-black text-gray-900 mb-6"><span>KEMBALIAN</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+                        <div className="flex justify-between font-bold text-gray-500 mb-1"><span>METODE</span><span className="uppercase">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
+                        {currentReceipt.paymentMethod !== 'Online' && (
+                          <React.Fragment>
+                            <div className="flex justify-between font-bold text-gray-400 mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
+                            <div className="flex justify-between font-black text-gray-900 mb-6"><span>KEMBALIAN</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+                          </React.Fragment>
+                        )}
                         
-                        <div className="text-center font-black border-t border-dashed border-gray-300 pt-4 text-gray-400 tracking-widest uppercase">LUNAS</div>
+                        <div className={`text-center font-black border-t border-dashed border-gray-300 pt-4 text-gray-400 tracking-widest uppercase ${currentReceipt.paymentMethod === 'Online' ? 'mt-4' : ''}`}>LUNAS</div>
                         <div className="text-center text-[8px] mt-1 font-bold text-gray-400">Terima Kasih Atas Kunjungan Anda</div>
                         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-t from-gray-100 to-transparent"></div>
                       </div>
@@ -941,6 +1116,7 @@
               {storeInfo.logo && <img src={storeInfo.logo} style={{ width: '30mm', display: 'block', margin: '0 auto 5mm auto' }} />}
               <div className="text-center font-bold text-sm mb-1">{storeInfo.name}</div>
               <div className="text-center text-[8px] mb-3 pb-3 border-b border-dashed border-black">{storeInfo.address}</div>
+              <div className="text-[8px] mb-1">Kasir: {currentReceipt.cashier || storeInfo.cashierName}</div>
               <div className="text-[8px] mb-2">Tanggal: {currentReceipt.date}</div>
               <div className="flex flex-col gap-1.5 mb-3 pb-3 border-b border-dashed border-black">
                 {currentReceipt.items.map((item, idx) => (
@@ -948,9 +1124,15 @@
                 ))}
               </div>
               <div className="flex justify-between font-bold text-sm mb-1"><span>TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
-              <div className="flex justify-between text-[8px] mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
-              <div className="flex justify-between text-[8px] font-bold mb-5"><span>KEMBALI</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
-              <div className="text-center text-[8px]">Terima Kasih</div><div className="text-center text-[8px]">Silakan datang kembali :)</div>
+              <div className="flex justify-between text-[8px] mb-1"><span>METODE</span><span className="uppercase font-bold">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
+              {currentReceipt.paymentMethod !== 'Online' && (
+                <React.Fragment>
+                  <div className="flex justify-between text-[8px] mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
+                  <div className="flex justify-between text-[8px] font-bold mb-5"><span>KEMBALI</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+                </React.Fragment>
+              )}
+              <div className={`text-center text-[8px] ${currentReceipt.paymentMethod === 'Online' ? 'mt-4' : ''}`}>Terima Kasih</div>
+              <div className="text-center text-[8px]">Silakan datang kembali :)</div>
             </div>
           )}
         </React.Fragment>
