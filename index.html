@@ -3,23 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aplikasi Kasir Bluetooth</title>
+  <title>Aplikasi Kasir Pro Lengkap</title>
   
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
+  <!-- React & ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Library untuk Kamera Barcode Scanner -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  
+  <!-- Library untuk Generate Barcode Visual -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
 <body class="bg-gray-50">
 
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
-    // --- ICON ---
+    // --- ICONS ---
     const Icon = ({ children, size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>;
     const ShoppingCart = (p) => <Icon {...p}><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></Icon>;
     const Printer = (p) => <Icon {...p}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></Icon>;
@@ -50,19 +57,164 @@
     const ScanBarcode = (p) => <Icon {...p}><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8"/><path d="M12 8v8"/><path d="M17 8v8"/></Icon>;
     const QrCode = (p) => <Icon {...p}><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h-2z"/><path d="M19 15h2v2h-2z"/><path d="M15 19h2v2h-2z"/><path d="M19 19h2v2h-2z"/></Icon>;
     const User = (p) => <Icon {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>;
+    const Camera = (p) => <Icon {...p}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></Icon>;
+    const TrendingUp = (p) => <Icon {...p}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></Icon>;
+    const Calendar = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
+    const FilterIcon = (p) => <Icon {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></Icon>;
 
     const INITIAL_PRODUCTS = [
-      { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, category: 'Minuman', stock: 50, barcode: '1111' },
-      { id: 2, name: 'Americano', price: 15000, category: 'Minuman', stock: 50, barcode: '2222' },
-      { id: 3, name: 'Matcha Latte', price: 22000, category: 'Minuman', stock: 40, barcode: '3333' },
-      { id: 4, name: 'Nasi Goreng Spesial', price: 25000, category: 'Makanan', stock: 30, barcode: '4444' },
-      { id: 5, name: 'Mie Goreng Telur', price: 15000, category: 'Makanan', stock: 35, barcode: '5555' },
-      { id: 6, name: 'Kentang Goreng', price: 12000, category: 'Cemilan', stock: 100, barcode: '6666' },
-      { id: 7, name: 'Roti Bakar Coklat', price: 15000, category: 'Cemilan', stock: 25, barcode: '7777' },
-      { id: 8, name: 'Es Teh Manis', price: 5000, category: 'Minuman', stock: 100, barcode: '8888' },
+      { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, hpp: 12000, category: 'Minuman', stock: 5, barcode: '1111' },
+      { id: 2, name: 'Americano', price: 15000, hpp: 10000, category: 'Minuman', stock: 50, barcode: '2222' },
+      { id: 3, name: 'Nasi Goreng Spesial', price: 25000, hpp: 18000, category: 'Makanan', stock: 3, barcode: '3333' },
+      { id: 4, name: 'Kentang Goreng', price: 12000, hpp: 8000, category: 'Cemilan', stock: 100, barcode: '4444' }
     ];
 
+    // --- REUSABLE CUSTOM DIALOG COMPONENT ---
+    const CustomDialog = ({ dialog, onClose }) => {
+      if (!dialog) return null;
+
+      return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={onClose}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className={`p-6 border-b border-gray-100 flex items-center gap-3 ${dialog.type === 'confirm' ? 'bg-orange-50' : (dialog.title === 'Error' ? 'bg-red-50' : 'bg-blue-50')}`}>
+              {dialog.type === 'confirm' ? <AlertCircle size={28} className="text-orange-500" /> : <AlertCircle size={28} className={dialog.title === 'Error' ? 'text-red-500' : 'text-blue-500'} />}
+              <h3 className="font-black text-gray-800 text-xl">{dialog.title}</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-600 font-medium">{dialog.message}</p>
+            </div>
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              {dialog.type === 'confirm' && (
+                <button onClick={onClose} className="px-5 py-2.5 bg-white border-2 border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Batal</button>
+              )}
+              <button
+                onClick={() => {
+                  if (dialog.onConfirm) dialog.onConfirm();
+                  onClose();
+                }}
+                className={`px-5 py-2.5 text-white rounded-xl font-bold transition-all shadow-md active:scale-95 ${dialog.type === 'confirm' ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
+              >
+                {dialog.type === 'confirm' ? 'Ya, Lanjutkan' : 'Mengerti'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- KAMERA SCANNER COMPONENT (DENGAN FILE UPLOAD FALLBACK) ---
+    const CameraScannerModal = ({ onClose, onScan, showAlert }) => {
+      const scannerRef = useRef(null);
+      const fileInputRef = useRef(null);
+      const [camError, setCamError] = useState(false);
+
+      useEffect(() => {
+        const html5QrCode = new Html5Qrcode("reader");
+        scannerRef.current = html5QrCode;
+
+        // Coba nyalakan kamera
+        html5QrCode.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText) => { 
+            if(navigator.vibrate) navigator.vibrate(100);
+            onScan(decodedText); 
+          },
+          (errorMessage) => { /* Abaikan error tiap frame baca */ }
+        ).catch(err => {
+          console.error("Camera Error:", err);
+          // Jika gagal (diblokir browser / no webcam), tampilkan opsi upload foto
+          setCamError(true);
+        });
+
+        // Cleanup
+        return () => {
+          if (scannerRef.current && scannerRef.current.isScanning) {
+            scannerRef.current.stop()
+              .then(() => scannerRef.current.clear())
+              .catch(e => console.error("Error stopping scanner", e));
+          }
+        };
+      }, []);
+
+      // Handler untuk scan barcode dari File Gambar (Galeri)
+      const handleFileUpload = async (e) => {
+        if (e.target.files.length === 0) return;
+        const file = e.target.files[0];
+        
+        if (!scannerRef.current) return;
+        
+        try {
+          const decodedText = await scannerRef.current.scanFile(file, true);
+          if(navigator.vibrate) navigator.vibrate(100);
+          onScan(decodedText);
+        } catch (err) {
+          showAlert("Gagal membaca barcode dari gambar tersebut. Pastikan gambar jelas dan terang.", "Error");
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-[80] bg-black/90 flex flex-col backdrop-blur-md animate-in fade-in duration-200">
+          <div className="p-4 flex justify-between items-center text-white bg-black/50 absolute top-0 w-full z-10">
+            <h3 className="font-bold text-lg flex items-center gap-2"><Camera size={20}/> Scan Barcode</h3>
+            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={24}/></button>
+          </div>
+          
+          <div className="flex-1 flex flex-col items-center justify-center relative w-full h-full mt-14 mb-20 px-4">
+             {camError ? (
+                <div className="w-full max-w-md p-6 border-2 border-dashed border-gray-600 rounded-3xl bg-gray-900 flex flex-col items-center justify-center text-center gap-4">
+                  <AlertCircle size={48} className="text-red-500" />
+                  <p className="text-white font-bold text-lg">Kamera Diblokir / Tidak Tersedia</p>
+                  <p className="text-gray-400 text-sm">Gunakan fitur Upload Foto untuk memindai barcode dari galeri Anda.</p>
+                </div>
+             ) : (
+                <div id="reader" className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border-4 border-gray-800 bg-black"></div>
+             )}
+          </div>
+
+          <div className="p-6 pb-10 text-center absolute bottom-0 w-full bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col items-center gap-3">
+             <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+             <button onClick={() => fileInputRef.current.click()} className="bg-white text-black px-6 py-3 rounded-full font-bold flex items-center gap-2 shadow-xl hover:bg-gray-200 active:scale-95 transition-all">
+               <Image size={20} /> Upload Foto Barcode
+             </button>
+             {!camError && <span className="text-gray-400 text-xs font-medium">Atau arahkan kamera ke barcode</span>}
+          </div>
+        </div>
+      );
+    }
+
+    // --- HELPER UNTUK TANGGAL BULAN/TAHUN ---
+    const getMonthYear = (dateString) => {
+      try {
+        const datePart = dateString.split(/[, ]+/)[0]; 
+        const parts = datePart.split(/[/.-]/); 
+        if (parts.length === 3) {
+          const year = parts[2].length === 4 ? parts[2] : parts[0];
+          const month = parts[2].length === 4 ? parts[1].padStart(2, '0') : parts[1].padStart(2, '0');
+          return `${year}-${month}`;
+        }
+      } catch (e) {}
+      return 'Lainnya';
+    };
+
+    const formatMonthYearText = (yyyymm) => {
+      if (yyyymm === 'all') return 'Semua Waktu';
+      if (yyyymm === 'Lainnya') return 'Periode Lainnya';
+      try {
+        const [year, month] = yyyymm.split('-');
+        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return `${months[parseInt(month, 10) - 1]} ${year}`;
+      } catch (e) { return yyyymm; }
+    };
+
     function App() {
+      // --- CUSTOM DIALOG STATE ---
+      const [dialogConfig, setDialogConfig] = useState(null);
+      const showAlert = useCallback((message, title = "Informasi") => setDialogConfig({ type: 'alert', title, message }), []);
+      const showConfirm = useCallback((message, onConfirm, title = "Konfirmasi") => setDialogConfig({ type: 'confirm', title, message, onConfirm }), []);
+      const closeDialog = () => setDialogConfig(null);
+
+      // --- APP STATES ---
       const [cart, setCart] = useState([]);
       const [printerDevice, setPrinterDevice] = useState(null);
       const [printerCharacteristic, setPrinterCharacteristic] = useState(null);
@@ -71,6 +223,7 @@
       const [isSupported, setIsSupported] = useState(true);
 
       const [activeTab, setActiveTab] = useState('kasir');
+      const [showScanner, setShowScanner] = useState(false);
       
       const [products, setProducts] = useState(() => { const saved = localStorage.getItem('pos_products'); return saved ? JSON.parse(saved) : INITIAL_PRODUCTS; });
       const [salesHistory, setSalesHistory] = useState(() => { const saved = localStorage.getItem('pos_sales'); return saved ? JSON.parse(saved) : []; });
@@ -79,7 +232,7 @@
         const parsed = saved ? JSON.parse(saved) : {};
         return { 
           name: parsed.name || 'POS Kasir Mini', 
-          address: parsed.address || 'Jl. GitHub Pages No. 1', 
+          address: parsed.address || 'Jl. Utama No. 1', 
           logo: parsed.logo || '',
           cashierName: parsed.cashierName || 'Kasir Utama',
           qrisImage: parsed.qrisImage || '',
@@ -93,15 +246,30 @@
       const [editCategoryInput, setEditCategoryInput] = useState('');
       
       const [editingId, setEditingId] = useState(null);
-      const [formData, setFormData] = useState({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
+      const [formData, setFormData] = useState({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       const [currentReceipt, setCurrentReceipt] = useState(null);
       const [showPaymentModal, setShowPaymentModal] = useState(false);
       const [cashAmount, setCashAmount] = useState('');
-      const [paymentMethod, setPaymentMethod] = useState('Tunai'); // 'Tunai' | 'Online'
+      const [paymentMethod, setPaymentMethod] = useState('Tunai');
 
+      // Kasir Search
       const [searchTerm, setSearchTerm] = useState('');
+      
+      // Inventory (Produk Tab) Filters
+      const [invSearchTerm, setInvSearchTerm] = useState('');
+      const [invStockFilter, setInvStockFilter] = useState('all'); // 'all' | 'low'
+      
+      // Menggunakan ref agar event listener keyboard memiliki data terbaru
+      const productsRef = useRef(products);
+      useEffect(() => { productsRef.current = products; }, [products]);
+
       const barcodeBuffer = useRef('');
       const barcodeTimeout = useRef(null);
+      const lastScanTime = useRef(0);
+      const lastKeyTime = useRef(0); 
+
+      // Filter Rekap Bulan
+      const [selectedMonth, setSelectedMonth] = useState('all');
 
       const [isAuthenticated, setIsAuthenticated] = useState(false);
       const [pinCode, setPinCode] = useState(() => localStorage.getItem('pos_pin') || '1234');
@@ -124,31 +292,108 @@
       useEffect(() => { localStorage.setItem('pos_pin', pinCode); }, [pinCode]);
       useEffect(() => { localStorage.setItem('pos_categories', JSON.stringify(categories)); }, [categories]);
 
-      // --- LISTENER SCANNER BARCODE ---
+      // --- LISTENER KEYBOARD SCANNER FISIK (USB/BLUETOOTH) ---
       useEffect(() => {
-        if (activeTab !== 'kasir') return;
+        if (activeTab !== 'kasir' || showScanner) return;
         
         const handleKeyDown = (e) => {
+          // Abaikan jika user sedang mengetik manual di dalam input search/form
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
           
+          const currentTime = Date.now();
+
+          // Jika jeda antar tombol > 50ms, ini ketikan manusia biasa, bukan alat scanner.
+          if (currentTime - lastKeyTime.current > 50) {
+            barcodeBuffer.current = '';
+          }
+          lastKeyTime.current = currentTime;
+          
           if (e.key === 'Enter') {
-            if (barcodeBuffer.current) {
-              const code = barcodeBuffer.current;
-              barcodeBuffer.current = '';
-              const product = products.find(p => p.barcode === code);
-              if (product) addToCart(product);
-              else alert('Barcode ' + code + ' tidak ditemukan di database produk!');
+            if (barcodeBuffer.current.length >= 3) { 
+              handleBarcodeScanned(barcodeBuffer.current);
             }
+            barcodeBuffer.current = '';
           } else if (e.key.length === 1) {
             barcodeBuffer.current += e.key;
             clearTimeout(barcodeTimeout.current);
-            barcodeTimeout.current = setTimeout(() => { barcodeBuffer.current = ''; }, 300);
+            barcodeTimeout.current = setTimeout(() => { barcodeBuffer.current = ''; }, 100);
           }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [activeTab, products]);
+      }, [activeTab, showScanner]); 
+
+      // --- HANDLER BARCODE SCANNED (KAMERA & ALAT FISIK) ---
+      const handleBarcodeScanned = (code) => {
+        const now = Date.now();
+        if (now - lastScanTime.current < 1500) return; // Debounce 1.5 detik cegah spam
+        
+        const product = productsRef.current.find(p => p.barcode === code);
+        if (product) {
+          lastScanTime.current = now;
+          addToCart(product);
+        } else {
+          lastScanTime.current = now; 
+          showAlert(`Barcode ${code} tidak ditemukan di database!`, 'Peringatan');
+        }
+      };
+
+      // --- GENERATE AUTO BARCODE ---
+      const handleGenerateBarcode = () => {
+        const autoCode = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+        setFormData({ ...formData, barcode: autoCode });
+      };
+
+      // --- CETAK LABEL BARCODE (STIKER) ---
+      const printBarcodeLabel = (product) => {
+        if (!product.barcode) return showAlert('Produk ini belum memiliki barcode!', 'Error');
+
+        try {
+          const canvas = document.createElement('canvas');
+          JsBarcode(canvas, product.barcode, {
+            format: "CODE128", 
+            displayValue: true,
+            fontSize: 16,
+            textMargin: 2,
+            width: 2,
+            height: 50,
+            margin: 10
+          });
+          const barcodeImage = canvas.toDataURL("image/png");
+
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+
+          const html = `
+            <html><head><title>Print_Barcode_${product.barcode}</title>
+              <style>
+                @page { margin: 0; size: 50mm 30mm; } 
+                body { margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; text-align: center; background: white; color: black; overflow: hidden;}
+                .product-name { font-size: 12px; font-weight: bold; margin-bottom: 2px; width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                .price { font-size: 11px; font-weight: bold; margin-top: 2px; }
+                img { max-width: 90%; max-height: 20mm; object-fit: contain; }
+              </style>
+            </head><body>
+              <div class="product-name">${product.name}</div>
+              <img src="${barcodeImage}" onload="setTimeout(() => { window.print(); }, 200);" />
+              <div class="price">${formatRupiah(product.price)}</div>
+            </body></html>
+          `;
+
+          iframe.contentWindow.document.open();
+          iframe.contentWindow.document.write(html);
+          iframe.contentWindow.document.close();
+
+          setTimeout(() => {
+            if (document.body.contains(iframe)) document.body.removeChild(iframe);
+          }, 3000);
+        } catch (err) {
+          showAlert('Gagal membuat barcode. Pastikan teks barcode valid (alfanumerik standar).', 'Error');
+          console.error(err);
+        }
+      };
 
       const handleBackupData = () => {
         const backupData = {
@@ -172,7 +417,11 @@
           try {
             const importedData = JSON.parse(event.target.result);
             if (importedData.products && importedData.salesHistory && importedData.storeInfo) {
-              setProducts(importedData.products);
+              const updatedProducts = importedData.products.map(p => ({
+                 ...p, hpp: p.hpp !== undefined ? Number(p.hpp) : 0 
+              }));
+              
+              setProducts(updatedProducts);
               setSalesHistory(importedData.salesHistory);
               setStoreInfo({
                 ...importedData.storeInfo,
@@ -181,12 +430,12 @@
               });
               if (importedData.categories) setCategories(importedData.categories);
               if (importedData.pinCode) setPinCode(importedData.pinCode);
-              alert("Data berhasil dikembalikan (Restore)! Aplikasi siap digunakan.");
+              showAlert("Data berhasil dikembalikan (Restore)! Aplikasi siap digunakan.", "Sukses");
             } else {
-              alert("Format file tidak valid atau rusak!");
+              showAlert("Format file tidak valid atau data korup!", "Error");
             }
           } catch (error) {
-            alert("Gagal membaca file backup!");
+            showAlert("Gagal membaca file backup!", "Error");
             console.error(error);
           }
         };
@@ -204,50 +453,61 @@
 
       const handleProductSubmit = (e) => {
         e.preventDefault();
-        if (!formData.name || !formData.price || formData.stock === '') return;
+        if (!formData.name || formData.price === '' || formData.stock === '') return;
+
+        const finalProduct = {
+          ...formData,
+          price: Number(formData.price),
+          hpp: Number(formData.hpp || 0),
+          stock: Number(formData.stock)
+        };
 
         if (editingId) {
-          setProducts(products.map(p => p.id === editingId ? { ...p, ...formData, price: Number(formData.price), stock: Number(formData.stock) } : p));
+          setProducts(products.map(p => p.id === editingId ? { ...p, ...finalProduct } : p));
           setEditingId(null);
         } else {
-          setProducts([...products, { id: Date.now(), ...formData, price: Number(formData.price), stock: Number(formData.stock) }]);
+          setProducts([...products, { id: Date.now(), ...finalProduct }]);
         }
-        setFormData({ name: '', price: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
+        setFormData({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       };
 
       const handleEditProduct = (product) => {
         setEditingId(product.id);
-        setFormData({ name: product.name, price: product.price, category: product.category, stock: product.stock !== undefined ? product.stock : 0, barcode: product.barcode || '' });
+        setFormData({ name: product.name, price: product.price, hpp: product.hpp || '', category: product.category, stock: product.stock !== undefined ? product.stock : 0, barcode: product.barcode || '' });
         setActiveTab('produk');
       };
 
       const handleDeleteProduct = (id) => {
-        if (window.confirm('Yakin ingin menghapus produk ini?')) {
-          setProducts(products.filter(p => p.id !== id));
+        showConfirm('Yakin ingin menghapus produk ini?', () => {
+          setProducts(prev => prev.filter(p => p.id !== id));
           removeFromCart(id);
-        }
+        });
       };
 
       useEffect(() => {
         if (!navigator.bluetooth) {
           setIsSupported(false);
-          setErrorMsg('Browser ini tidak mendukung Web Bluetooth. Gunakan Chrome atau Edge (Android/PC). iOS tidak didukung.');
+          setErrorMsg('Browser ini tidak mendukung Bluetooth. Gunakan Chrome/Edge.');
         }
       }, []);
 
       const formatRupiah = (angka) => {
-        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(Number(angka) || 0);
       };
+
+      const formatNumberBT = (num) => {
+        return (Number(num) || 0).toLocaleString('id-ID');
+      }
 
       const addToCart = (product) => {
         const currentStock = product.stock !== undefined ? product.stock : 0;
-        if (currentStock <= 0) return alert('Stok produk habis!');
+        if (currentStock <= 0) return showAlert('Stok produk habis!', 'Peringatan');
         
         setCart((prevCart) => {
           const existingItem = prevCart.find((item) => item.product.id === product.id);
           if (existingItem) {
             if (existingItem.quantity >= currentStock) {
-              alert('Maksimal stok tercapai!');
+              showAlert('Maksimal stok tercapai!', 'Peringatan');
               return prevCart;
             }
             return prevCart.map((item) => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
@@ -261,11 +521,12 @@
             if (item.product.id === productId) {
               const currentStock = item.product.stock !== undefined ? item.product.stock : 0;
               const newQuantity = item.quantity + delta;
+              
               if (newQuantity > currentStock) {
-                alert('Maksimal stok tercapai!');
+                showAlert('Maksimal stok tercapai!', 'Peringatan');
                 return item;
               }
-              return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
+              return { ...item, quantity: newQuantity };
             }
             return item;
           }).filter(item => item.quantity > 0)
@@ -277,7 +538,7 @@
       };
 
       const total = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
-      const changeAmount = Number(cashAmount) - total;
+      const changeAmount = Number(cashAmount || 0) - total;
 
       const connectToPrinter = async () => {
         setIsConnecting(true);
@@ -394,15 +655,45 @@
         }, 500);
       };
 
+      // --- FILTER INVENTORY (TAB PRODUK) ---
+      const filteredInventory = useMemo(() => {
+        return products.filter(p => {
+          const matchSearch = p.name.toLowerCase().includes(invSearchTerm.toLowerCase()) || (p.barcode && p.barcode.includes(invSearchTerm));
+          const matchStock = invStockFilter === 'low' ? (p.stock !== undefined ? p.stock : 0) <= 5 : true;
+          return matchSearch && matchStock;
+        });
+      }, [products, invSearchTerm, invStockFilter]);
+
+      // --- FILTER LOG PENJUALAN PER BULAN ---
+      const availableMonths = useMemo(() => {
+        const months = new Set();
+        salesHistory.forEach(sale => {
+          const m = getMonthYear(sale.date);
+          if(m !== 'Lainnya') months.add(m);
+        });
+        return Array.from(months).sort().reverse(); 
+      }, [salesHistory]);
+
+      const filteredSales = useMemo(() => {
+        if (selectedMonth === 'all') return salesHistory;
+        return salesHistory.filter(sale => getMonthYear(sale.date) === selectedMonth);
+      }, [salesHistory, selectedMonth]);
+
+      // Hitung Profit Dinamis
+      const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+      const totalHpp = filteredSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + ((item.hpp || 0) * item.quantity), 0), 0);
+      const totalProfit = totalRevenue - totalHpp;
+
+
       const printSalesSummaryAsPDF = () => {
-        if (salesHistory.length === 0) return alert('Tidak ada data rekap untuk dicetak.');
+        if (filteredSales.length === 0) return showAlert('Tidak ada data rekap pada periode ini.', 'Peringatan');
         
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
         document.body.appendChild(iframe);
 
-        const grandTotal = salesHistory.reduce((sum, sale) => sum + sale.total, 0);
         const printDate = new Date().toLocaleString('id-ID');
+        const periodText = formatMonthYearText(selectedMonth);
 
         const html = `
           <html><head><title>Rekap_Penjualan_${storeInfo.name}</title>
@@ -424,34 +715,45 @@
                 ${storeInfo.name}
               </h1>
               <p class="text-center" style="margin:0; color:#555;">${storeInfo.address}</p>
-              <h2 class="text-center" style="margin:15px 0 5px 0; font-size: 18px;">Laporan Rekap Penjualan</h2>
-              <p class="text-center" style="margin:0; font-size:12px; color:#777;">Dicetak pada: ${printDate}</p>
+              <h2 class="text-center" style="margin:15px 0 5px 0; font-size: 18px;">Laporan Rekap Penjualan & Profit</h2>
+              <p class="text-center font-bold" style="margin:0; font-size:14px; color:#2563eb;">Periode: ${periodText}</p>
+              <p class="text-center" style="margin:5px 0 0 0; font-size:10px; color:#777;">Dicetak pada: ${printDate}</p>
             </div>
             <table>
               <thead>
                 <tr>
                   <th style="width: 5%;">No</th>
-                  <th style="width: 25%;">Waktu Transaksi</th>
-                  <th style="width: 45%;">Rincian Item</th>
-                  <th class="text-right" style="width: 25%;">Total</th>
+                  <th style="width: 20%;">Waktu Transaksi</th>
+                  <th style="width: 35%;">Rincian Item</th>
+                  <th class="text-right" style="width: 20%;">HPP / Modal</th>
+                  <th class="text-right" style="width: 20%;">Total</th>
                 </tr>
               </thead>
               <tbody>
-                ${salesHistory.map((sale, index) => `
-                  <tr>
-                    <td>${index + 1}</td>
-                    <td>${sale.date}</td>
-                    <td class="item-list">
-                      ${sale.items.map(item => `${item.quantity}x ${item.product.name}`).join('<br>')}
-                    </td>
-                    <td class="text-right font-bold">${formatRupiah(sale.total)}</td>
-                  </tr>
-                `).join('')}
+                ${filteredSales.map((sale, index) => {
+                  const saleHpp = sale.items.reduce((sum, item) => sum + ((item.hpp || 0) * item.quantity), 0);
+                  return `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td>${sale.date}</td>
+                      <td class="item-list">
+                        ${sale.items.map(item => `${item.quantity}x ${item.product.name}`).join('<br>')}
+                      </td>
+                      <td class="text-right" style="color: #666;">${formatRupiah(saleHpp)}</td>
+                      <td class="text-right font-bold">${formatRupiah(sale.total)}</td>
+                    </tr>
+                  `;
+                }).join('')}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3" class="text-right font-bold" style="font-size: 16px;">TOTAL PENDAPATAN</td>
-                  <td class="text-right font-bold" style="font-size: 16px; color: #16a34a;">${formatRupiah(grandTotal)}</td>
+                  <td colspan="3" class="text-right font-bold" style="font-size: 14px;">TOTAL KESELURUHAN</td>
+                  <td class="text-right font-bold" style="font-size: 14px; color: #666;">${formatRupiah(totalHpp)}</td>
+                  <td class="text-right font-bold" style="font-size: 14px; color: #16a34a;">${formatRupiah(totalRevenue)}</td>
+                </tr>
+                <tr>
+                  <td colspan="4" class="text-right font-bold" style="font-size: 16px;">KEUNTUNGAN BERSIH</td>
+                  <td class="text-right font-bold" style="font-size: 16px; color: #2563eb; background-color: #eff6ff;">${formatRupiah(totalProfit)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -469,7 +771,7 @@
       };
 
       const printBluetooth = async (saleData) => {
-        if (!printerCharacteristic) return alert('Printer Bluetooth belum terhubung!');
+        if (!printerCharacteristic) return showAlert('Printer Bluetooth belum terhubung!', 'Peringatan');
         try {
           let receiptText = "";
           receiptText += padCenter(storeInfo.name, 32) + "\n";
@@ -480,15 +782,18 @@
           receiptText += "================================\n";
           
           saleData.items.forEach(item => {
-            receiptText += `${item.product.name}\n`;
-            const qtyPrice = `${item.quantity} x ${item.product.price}`;
-            const subtotal = `${item.quantity * item.product.price}`;
+            let pName = item.product.name;
+            if(pName.length > 32) pName = pName.substring(0, 32);
+            receiptText += `${pName}\n`;
+            
+            const qtyPrice = `${item.quantity} x ${formatNumberBT(item.product.price)}`;
+            const subtotal = `${formatNumberBT(item.quantity * item.product.price)}`;
             const spaces = Math.max(1, 32 - qtyPrice.length - subtotal.length);
             receiptText += `${qtyPrice}${' '.repeat(spaces)}${subtotal}\n`;
           });
           
           receiptText += "================================\n";
-          const totalStr = `${saleData.total}`;
+          const totalStr = `${formatNumberBT(saleData.total)}`;
           const totalLabel = "TOTAL:";
           const totalSpaces = 32 - totalLabel.length - totalStr.length;
           receiptText += `${totalLabel}${totalSpaces > 0 ? ' '.repeat(totalSpaces) : ' '}${totalStr}\n`;
@@ -499,12 +804,12 @@
           receiptText += `${methodLabel}${methodSpaces > 0 ? ' '.repeat(methodSpaces) : ' '}${methodStr}\n`;
 
           if (saleData.paymentMethod !== 'Online') {
-            const cashStr = `${saleData.cash || 0}`;
+            const cashStr = `${formatNumberBT(saleData.cash || 0)}`;
             const cashLabel = "TUNAI:";
             const cashSpaces = 32 - cashLabel.length - cashStr.length;
             receiptText += `${cashLabel}${cashSpaces > 0 ? ' '.repeat(cashSpaces) : ' '}${cashStr}\n`;
 
-            const changeStr = `${saleData.change || 0}`;
+            const changeStr = `${formatNumberBT(saleData.change || 0)}`;
             const changeLabel = "KEMBALI:";
             const changeSpaces = 32 - changeLabel.length - changeStr.length;
             receiptText += `${changeLabel}${changeSpaces > 0 ? ' '.repeat(changeSpaces) : ' '}${changeStr}\n`;
@@ -514,21 +819,21 @@
           receiptText += "          Terima Kasih         \n   Silakan datang kembali :)   \n\n\n";
 
           await sendTextToPrinter(printerCharacteristic, receiptText);
-          alert('Struk berhasil dicetak via Bluetooth!');
+          showAlert('Struk berhasil dicetak via Bluetooth!', 'Sukses');
         } catch (err) {
-          alert('Gagal mencetak struk via Bluetooth: ' + err.message);
+          showAlert(`Gagal mencetak struk via Bluetooth: ${err.message}`, 'Error');
         }
       };
 
       const handlePayment = () => {
-        if (cart.length === 0) return alert('Keranjang kosong!');
+        if (cart.length === 0) return showAlert('Keranjang kosong!', 'Peringatan');
         setCashAmount('');
         setPaymentMethod('Tunai');
         setShowPaymentModal(true);
       };
 
       const processPayment = () => {
-        if (paymentMethod === 'Tunai' && changeAmount < 0) return alert('Uang tunai kurang!');
+        if (paymentMethod === 'Tunai' && changeAmount < 0) return showAlert('Uang tunai kurang!', 'Peringatan');
         
         const finalCash = paymentMethod === 'Online' ? total : Number(cashAmount);
         const finalChange = paymentMethod === 'Online' ? 0 : changeAmount;
@@ -536,7 +841,11 @@
         const newSale = { 
           id: Date.now(), 
           date: new Date().toLocaleString('id-ID'), 
-          items: [...cart], 
+          items: cart.map(item => ({
+             product: item.product,
+             quantity: item.quantity,
+             hpp: item.product.hpp || 0 
+          })), 
           total, 
           cash: finalCash, 
           change: finalChange,
@@ -571,10 +880,10 @@
       };
 
       const handleLogout = () => {
-        if (window.confirm('Yakin ingin keluar dari sistem kasir?')) {
+        showConfirm('Yakin ingin keluar dari sistem kasir?', () => {
           setIsAuthenticated(false);
           setActiveTab('kasir');
-        }
+        });
       };
 
       const handleChangePin = (e) => {
@@ -601,24 +910,27 @@
 
       const handleAddCategory = () => {
         if (!newCategory.trim()) return;
-        if (categories.includes(newCategory.trim())) return alert('Kategori sudah ada!');
+        if (categories.includes(newCategory.trim())) return showAlert('Kategori sudah ada!', 'Peringatan');
         setCategories([...categories, newCategory.trim()]);
         setNewCategory('');
       };
 
       const handleDeleteCategory = (cat) => {
-        if (categories.length <= 1) return alert('Minimal harus ada 1 kategori!');
-        if (window.confirm(`Yakin ingin menghapus kategori "${cat}"?`)) {
+        if (categories.length <= 1) return showAlert('Minimal harus ada 1 kategori!', 'Peringatan');
+        showConfirm(`Yakin ingin menghapus kategori "${cat}"? Produk dengan kategori ini akan dipindah ke kategori "${categories.find(c => c !== cat)}".`, () => {
           const newCategories = categories.filter(c => c !== cat);
           setCategories(newCategories);
+          
+          setProducts(prev => prev.map(p => p.category === cat ? { ...p, category: newCategories[0] } : p));
+          
           if (formData.category === cat) setFormData({ ...formData, category: newCategories[0] });
-        }
+        });
       };
 
       const handleEditCategorySave = (oldCat) => {
         const trimmedNewCat = editCategoryInput.trim();
         if (!trimmedNewCat) { setEditingCategory(null); return; }
-        if (trimmedNewCat !== oldCat && categories.includes(trimmedNewCat)) return alert('Kategori sudah ada!');
+        if (trimmedNewCat !== oldCat && categories.includes(trimmedNewCat)) return showAlert('Kategori sudah ada!', 'Peringatan');
         const newCategories = categories.map(c => c === oldCat ? trimmedNewCat : c);
         setCategories(newCategories);
         setProducts(prev => prev.map(p => p.category === oldCat ? { ...p, category: trimmedNewCat } : p));
@@ -629,8 +941,8 @@
       const handleLogoUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (!file.type.startsWith('image/')) return alert('Tolong unggah file gambar saja!');
-        if (file.size > 2 * 1024 * 1024) return alert('Ukuran file terlalu besar! Gunakan gambar di bawah 2MB.');
+        if (!file.type.startsWith('image/')) return showAlert('Tolong unggah file gambar saja!', 'Error');
+        if (file.size > 2 * 1024 * 1024) return showAlert('Ukuran file terlalu besar! Gunakan gambar di bawah 2MB.', 'Error');
 
         const reader = new FileReader();
         reader.onload = (event) => setStoreInfo({ ...storeInfo, logo: event.target.result });
@@ -640,8 +952,8 @@
       const handleQrisUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (!file.type.startsWith('image/')) return alert('Tolong unggah file gambar saja!');
-        if (file.size > 2 * 1024 * 1024) return alert('Ukuran file terlalu besar! Gunakan gambar di bawah 2MB.');
+        if (!file.type.startsWith('image/')) return showAlert('Tolong unggah file gambar saja!', 'Error');
+        if (file.size > 2 * 1024 * 1024) return showAlert('Ukuran file terlalu besar! Gunakan gambar di bawah 2MB.', 'Error');
 
         const reader = new FileReader();
         reader.onload = (event) => setStoreInfo({ ...storeInfo, qrisImage: event.target.result });
@@ -666,6 +978,7 @@
                 <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 active:scale-95 flex justify-center items-center gap-3 transition-all shadow-lg shadow-blue-200"><Lock size={20} /> Masuk Sekarang</button>
               </form>
             </div>
+            <CustomDialog dialog={dialogConfig} onClose={closeDialog} />
           </div>
         );
       }
@@ -714,22 +1027,26 @@
                   <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px] lg:min-h-0">
                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
                       <h2 className="font-bold text-gray-700 text-lg">Daftar Produk</h2>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search size={18} className="text-gray-400" /></div>
-                        <input 
-                          type="text" 
-                          value={searchTerm} 
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              const product = products.find(p => p.barcode === searchTerm);
-                              if (product) { addToCart(product); setSearchTerm(''); }
-                            }
-                          }}
-                          className="w-full pl-12 pr-12 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all shadow-inner" 
-                          placeholder="Cari nama produk atau scan barcode di sini..."
-                        />
-                        <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none"><ScanBarcode size={18} className="text-gray-400" /></div>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search size={18} className="text-gray-400" /></div>
+                          <input 
+                            type="text" 
+                            value={searchTerm} 
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleBarcodeScanned(searchTerm);
+                                setSearchTerm('');
+                              }
+                            }}
+                            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all shadow-inner" 
+                            placeholder="Cari produk / ketik barcode manual..."
+                          />
+                        </div>
+                        <button onClick={() => setShowScanner(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-xl shadow-md flex items-center justify-center transition-colors" title="Scan via Kamera HP/Laptop">
+                          <Camera size={22} />
+                        </button>
                       </div>
                     </div>
                     <div className="p-5 overflow-y-auto">
@@ -788,35 +1105,61 @@
                     <form onSubmit={handleProductSubmit} className="flex flex-col gap-5">
                       <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Nama Produk</label><input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Contoh: Kopi Hitam Panas"/></div>
                       <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Harga (Rp)</label><input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="15000"/></div>
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Stok</label><input required type="number" min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="100"/></div>
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Harga Jual</label><input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="15000"/></div>
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">HPP / Modal</label>
+                          <input type="number" min="0" value={formData.hpp} onChange={e => setFormData({...formData, hpp: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="10000"/>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Stok</label><input required type="number" min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="100"/></div>
                         <div>
                           <label className="block text-xs font-black text-gray-500 uppercase mb-2">Kategori</label>
                           <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white">
                             {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode</label>
-                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Opsional"/>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode</label>
+                        <div className="flex gap-2">
+                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Isi manual / klik Auto"/>
+                          <button type="button" onClick={handleGenerateBarcode} className="bg-gray-100 text-gray-600 px-5 rounded-xl font-bold hover:bg-blue-100 hover:text-blue-600 transition-colors flex items-center justify-center border-2 border-gray-200" title="Generate Barcode Otomatis">
+                            Auto
+                          </button>
                         </div>
                       </div>
                       <div className="flex gap-3 mt-2">
                         <button type="submit" className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-100"><Save size={20}/> Simpan</button>
-                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', category: categories[0] || 'Lainnya', stock:'', barcode:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
+                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', hpp:'', category: categories[0] || 'Lainnya', stock:'', barcode:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
                       </div>
                     </form>
                   </div>
 
                   <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
-                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><h2 className="font-bold text-gray-700 text-lg">Inventory ({products.length})</h2></div>
+                    
+                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
+                      <h2 className="font-bold text-gray-700 text-lg flex-shrink-0">Inventory ({filteredInventory.length})</h2>
+                      <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+                        <div className="relative flex-1 sm:w-48">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search size={14} className="text-gray-400" /></div>
+                          <input type="text" value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none" placeholder="Cari nama/barcode..."/>
+                        </div>
+                        <div className="relative flex-1 sm:w-48">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><FilterIcon size={14} className="text-gray-400" /></div>
+                          <select value={invStockFilter} onChange={(e) => setInvStockFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none appearance-none cursor-pointer">
+                             <option value="all">Semua Status Stok</option>
+                             <option value="low">Stok Menipis (≤ 5)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="overflow-y-auto p-0 flex-1 block">
-                      <table className="w-full text-left border-collapse min-w-[500px]">
-                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
+                      <table className="w-full text-left border-collapse min-w-[650px]">
+                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga Jual</th><th className="p-5 border-b border-gray-200 text-gray-500">Modal (HPP)</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
                         <tbody className="text-sm">
-                          {products.map(product => {
+                          {filteredInventory.map(product => {
                             const stock = product.stock !== undefined ? product.stock : 0;
                             return (
                               <tr key={product.id} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors">
@@ -826,15 +1169,19 @@
                                 </td>
                                 <td className="p-5"><span className="bg-white px-3 py-1 rounded-full text-[10px] font-black border border-gray-200 text-gray-500 uppercase">{product.category}</span></td>
                                 <td className="p-5 font-black text-blue-600">{formatRupiah(product.price)}</td>
+                                <td className="p-5 font-bold text-gray-500 text-xs">{formatRupiah(product.hpp || 0)}</td>
                                 <td className="p-5 text-center"><span className={`px-3 py-1 rounded-lg font-black text-xs border ${stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>{stock}</span></td>
                                 <td className="p-5 flex justify-center gap-1">
+                                  {product.barcode && (
+                                    <button onClick={() => printBarcodeLabel(product)} className="p-2.5 text-gray-500 hover:bg-gray-200 rounded-xl transition-all" title="Cetak Label Barcode"><Printer size={16}/></button>
+                                  )}
                                   <button onClick={() => handleEditProduct(product)} className="p-2.5 text-blue-500 hover:bg-blue-100 rounded-xl transition-all" title="Edit"><Edit2 size={16}/></button>
                                   <button onClick={() => handleDeleteProduct(product.id)} className="p-2.5 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={16}/></button>
                                 </td>
                               </tr>
                             );
                           })}
-                          {products.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-gray-300 font-bold">Belum ada data barang.</td></tr>}
+                          {filteredInventory.length === 0 && <tr><td colSpan="6" className="p-10 text-center text-gray-300 font-bold">Tidak ada data barang yang sesuai filter.</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -844,38 +1191,63 @@
 
               {activeTab === 'rekap' && (
                 <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
-                   <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                   <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                       <h2 className="font-bold text-gray-700 text-lg">Log Penjualan</h2>
-                      <div className="flex items-center gap-3">
-                        <div className="text-xs font-black text-blue-700 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm">PENDAPATAN: <span className="text-sm ml-1">{formatRupiah(salesHistory.reduce((sum, sale) => sum + sale.total, 0))}</span></div>
-                        {salesHistory.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <button onClick={printSalesSummaryAsPDF} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-100 transition-all active:scale-95"><Printer size={16} /> Laporan</button>
-                            <button onClick={() => { if(window.confirm('Bersihkan semua riwayat?')) setSalesHistory([]); }} className="p-2 text-red-500 hover:bg-red-50 rounded-xl border border-red-100 transition-all" title="Reset History"><Trash2 size={18} /></button>
+                      
+                      <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm flex-1 md:flex-none">
+                           <Calendar size={18} className="text-gray-400" />
+                           <select 
+                              value={selectedMonth} 
+                              onChange={(e) => setSelectedMonth(e.target.value)} 
+                              className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
+                           >
+                             <option value="all">Semua Waktu</option>
+                             {availableMonths.map(m => (
+                               <option key={m} value={m}>{formatMonthYearText(m)}</option>
+                             ))}
+                           </select>
+                        </div>
+
+                        <div className="text-xs font-black text-blue-700 bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 shadow-sm whitespace-nowrap">PENDAPATAN: <span className="text-sm ml-1">{formatRupiah(totalRevenue)}</span></div>
+                        <div className="text-xs font-black text-green-700 bg-green-50 px-4 py-3 rounded-xl border border-green-100 shadow-sm flex items-center gap-1 whitespace-nowrap"><TrendingUp size={14}/> PROFIT: <span className="text-sm ml-1">{formatRupiah(totalProfit)}</span></div>
+                        
+                        {filteredSales.length > 0 && (
+                          <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                            <button onClick={printSalesSummaryAsPDF} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-100 transition-all active:scale-95"><Printer size={16} /> Laporan PDF</button>
+                            <button onClick={() => showConfirm('Bersihkan SEMUA riwayat penjualan? Tindakan ini tidak bisa dibatalkan.', () => setSalesHistory([]))} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl border border-red-100 transition-all" title="Reset History"><Trash2 size={18} /></button>
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="overflow-y-auto p-5 flex flex-col gap-5 flex-1">
-                      {salesHistory.length === 0 ? (
-                        <div className="m-auto text-center text-gray-300 py-16"><ClipboardList size={80} className="mx-auto mb-4 opacity-10" /><p className="font-bold text-gray-400">Belum Ada Transaksi</p></div>
+                    
+                    <div className="overflow-y-auto p-5 flex flex-col gap-5 flex-1 bg-gray-50/30">
+                      {filteredSales.length === 0 ? (
+                        <div className="m-auto text-center text-gray-300 py-16"><ClipboardList size={80} className="mx-auto mb-4 opacity-10" /><p className="font-bold text-gray-400">Belum Ada Transaksi {selectedMonth !== 'all' ? 'di Bulan Ini' : ''}</p></div>
                       ) : (
-                        salesHistory.map(sale => (
-                          <div key={sale.id} className="border border-gray-100 rounded-2xl p-5 hover:shadow-lg hover:border-blue-200 transition-all bg-white relative group">
-                            <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
-                              <div className="flex flex-col"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu & Kasir</span><span className="text-sm text-gray-800 font-bold">{sale.date}</span><span className="text-xs text-gray-500 font-medium mt-0.5"><User size={10} className="inline mr-1 mb-0.5"/>{sale.cashier || 'Kasir'}</span></div>
-                              <div className="flex items-center gap-4 text-right">
-                                <div className="flex flex-col"><span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Bayar</span><span className="font-black text-blue-600 text-xl">{formatRupiah(sale.total)}</span></div>
-                                <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-3 rounded-2xl transition-all shadow-inner"><FileText size={20} /></button>
+                        filteredSales.map(sale => {
+                          const saleHpp = sale.items.reduce((sum, item) => sum + ((item.hpp || 0) * item.quantity), 0);
+                          return (
+                            <div key={sale.id} className="border border-gray-100 rounded-2xl p-5 hover:shadow-lg hover:border-blue-200 transition-all bg-white relative group">
+                              <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
+                                <div className="flex flex-col"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu & Kasir</span><span className="text-sm text-gray-800 font-bold">{sale.date}</span><span className="text-xs text-gray-500 font-medium mt-0.5"><User size={10} className="inline mr-1 mb-0.5"/>{sale.cashier || 'Kasir'}</span></div>
+                                <div className="flex items-center gap-4 text-right">
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Bayar</span>
+                                    <span className="font-black text-blue-600 text-xl">{formatRupiah(sale.total)}</span>
+                                    <span className="text-[10px] font-bold text-green-500 mt-1">Profit: {formatRupiah(sale.total - saleHpp)}</span>
+                                  </div>
+                                  <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-3 rounded-2xl transition-all shadow-inner"><FileText size={20} /></button>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {sale.items.map((item, idx) => (
+                                  <div key={idx} className="bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 flex items-center gap-2"><span className="bg-blue-100 text-blue-600 px-1.5 rounded-md">{item.quantity}x</span>{item.product.name}</div>
+                                ))}
                               </div>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              {sale.items.map((item, idx) => (
-                                <div key={idx} className="bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 flex items-center gap-2"><span className="bg-blue-100 text-blue-600 px-1.5 rounded-md">{item.quantity}x</span>{item.product.name}</div>
-                              ))}
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                 </div>
@@ -929,7 +1301,6 @@
                     </div>
                   </div>
 
-                  {/* --- NEW SECTION: PENGATURAN PEMBAYARAN ONLINE --- */}
                   <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mt-6">
                     <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-2xl pb-4 border-b border-gray-100"><QrCode size={32} className="text-blue-600"/> Info Pembayaran Online</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1002,9 +1373,10 @@
                 </div>
               )}
 
+              {/* Modal Pembayaran */}
               {showPaymentModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-white/20 animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
+                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                       <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Pembayaran</h3>
                       <button onClick={() => setShowPaymentModal(false)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
@@ -1057,9 +1429,10 @@
                 </div>
               )}
 
+              {/* Modal Struk */}
               {currentReceipt && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setCurrentReceipt(null)}>
+                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                       <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Struk Berhasil</h3>
                       <button onClick={() => setCurrentReceipt(null)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
@@ -1107,10 +1480,23 @@
                   </div>
                 </div>
               )}
-
+              
             </main>
           </div>
 
+          {/* Modal Camera Scanner */}
+          {showScanner && (
+            <CameraScannerModal 
+              onClose={() => setShowScanner(false)} 
+              onScan={(code) => {
+                 handleBarcodeScanned(code);
+                 setShowScanner(false);
+              }} 
+              showAlert={showAlert}
+            />
+          )}
+
+          {/* Tampilan Print Bawaan Web (Disembunyikan di UI Utama) */}
           {currentReceipt && (
             <div className="hidden print:block font-mono text-black bg-white w-full mx-auto text-[10px] leading-tight" style={{ maxWidth: '58mm' }}>
               {storeInfo.logo && <img src={storeInfo.logo} style={{ width: '30mm', display: 'block', margin: '0 auto 5mm auto' }} />}
@@ -1120,15 +1506,15 @@
               <div className="text-[8px] mb-2">Tanggal: {currentReceipt.date}</div>
               <div className="flex flex-col gap-1.5 mb-3 pb-3 border-b border-dashed border-black">
                 {currentReceipt.items.map((item, idx) => (
-                  <div key={idx}><div className="font-bold">{item.product.name}</div><div className="flex justify-between"><span>{item.quantity}x {formatRupiah(item.product.price)}</span><span>{formatRupiah(item.quantity * item.product.price)}</span></div></div>
+                  <div key={idx}><div className="font-bold">{item.product.name}</div><div className="flex justify-between"><span>{item.quantity}x {formatNumberBT(item.product.price)}</span><span>{formatNumberBT(item.quantity * item.product.price)}</span></div></div>
                 ))}
               </div>
-              <div className="flex justify-between font-bold text-sm mb-1"><span>TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
+              <div className="flex justify-between font-bold text-sm mb-1"><span>TOTAL</span><span>{formatNumberBT(currentReceipt.total)}</span></div>
               <div className="flex justify-between text-[8px] mb-1"><span>METODE</span><span className="uppercase font-bold">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
               {currentReceipt.paymentMethod !== 'Online' && (
                 <React.Fragment>
-                  <div className="flex justify-between text-[8px] mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
-                  <div className="flex justify-between text-[8px] font-bold mb-5"><span>KEMBALI</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+                  <div className="flex justify-between text-[8px] mb-1"><span>TUNAI</span><span>{formatNumberBT(currentReceipt.cash || 0)}</span></div>
+                  <div className="flex justify-between text-[8px] font-bold mb-5"><span>KEMBALI</span><span>{formatNumberBT(currentReceipt.change || 0)}</span></div>
                 </React.Fragment>
               )}
               <div className={`text-center text-[8px] ${currentReceipt.paymentMethod === 'Online' ? 'mt-4' : ''}`}>Terima Kasih</div>
@@ -1144,3 +1530,5 @@
   </script>
 </body>
 </html>
+
+
