@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aplikasi Kasir Pro Lengkap</title>
+  <title>Aplikasi Kasir Pro Ultimate</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -13,13 +13,13 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
-  <!-- Library untuk Kamera Barcode Scanner -->
+  <!-- Library untuk Kamera Barcode Scanner (html5-qrcode) -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   
-  <!-- Library untuk Generate Barcode Visual -->
+  <!-- Library untuk Generate Barcode Visual (JsBarcode) -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50 text-gray-800">
 
   <div id="root"></div>
 
@@ -62,6 +62,7 @@
     const Calendar = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
     const FilterIcon = (p) => <Icon {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></Icon>;
 
+    // Data Produk Dummy (untuk initial load)
     const INITIAL_PRODUCTS = [
       { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, hpp: 12000, category: 'Minuman', stock: 5, barcode: '1111' },
       { id: 2, name: 'Americano', price: 15000, hpp: 10000, category: 'Minuman', stock: 50, barcode: '2222' },
@@ -69,7 +70,7 @@
       { id: 4, name: 'Kentang Goreng', price: 12000, hpp: 8000, category: 'Cemilan', stock: 100, barcode: '4444' }
     ];
 
-    // --- REUSABLE CUSTOM DIALOG COMPONENT ---
+    // --- COMPONENT: CUSTOM DIALOG (Alert/Confirm) ---
     const CustomDialog = ({ dialog, onClose }) => {
       if (!dialog) return null;
 
@@ -102,17 +103,18 @@
       );
     };
 
-    // --- KAMERA SCANNER COMPONENT (DENGAN FILE UPLOAD FALLBACK) ---
+    // --- COMPONENT: KAMERA SCANNER (DENGAN FILE UPLOAD FALLBACK & CLEANUP MEMORI KETAT) ---
     const CameraScannerModal = ({ onClose, onScan, showAlert }) => {
       const scannerRef = useRef(null);
       const fileInputRef = useRef(null);
       const [camError, setCamError] = useState(false);
 
       useEffect(() => {
+        // Inisialisasi scanner
         const html5QrCode = new Html5Qrcode("reader");
         scannerRef.current = html5QrCode;
 
-        // Coba nyalakan kamera
+        // Coba nyalakan kamera belakang
         html5QrCode.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -120,14 +122,14 @@
             if(navigator.vibrate) navigator.vibrate(100);
             onScan(decodedText); 
           },
-          (errorMessage) => { /* Abaikan error tiap frame baca */ }
+          (errorMessage) => { /* Abaikan error tiap frame baca yang kosong */ }
         ).catch(err => {
           console.error("Camera Error:", err);
-          // Jika gagal (diblokir browser / no webcam), tampilkan opsi upload foto
+          // Jika gagal (diblokir browser / no webcam / di iFrame), tampilkan UI error + opsi upload foto
           setCamError(true);
         });
 
-        // Cleanup
+        // Cleanup: Hentikan dan bersihkan memori kamera saat modal ditutup
         return () => {
           if (scannerRef.current && scannerRef.current.isScanning) {
             scannerRef.current.stop()
@@ -135,9 +137,9 @@
               .catch(e => console.error("Error stopping scanner", e));
           }
         };
-      }, []);
+      }, [onScan]);
 
-      // Handler untuk scan barcode dari File Gambar (Galeri)
+      // Handler untuk scan barcode dari File Gambar (Galeri / Folder)
       const handleFileUpload = async (e) => {
         if (e.target.files.length === 0) return;
         const file = e.target.files[0];
@@ -149,13 +151,13 @@
           if(navigator.vibrate) navigator.vibrate(100);
           onScan(decodedText);
         } catch (err) {
-          showAlert("Gagal membaca barcode dari gambar tersebut. Pastikan gambar jelas dan terang.", "Error");
+          showAlert("Gagal membaca barcode dari gambar tersebut. Pastikan gambar jelas, fokus, dan crop area barcode.", "Error");
         }
       };
 
       return (
         <div className="fixed inset-0 z-[80] bg-black/90 flex flex-col backdrop-blur-md animate-in fade-in duration-200">
-          <div className="p-4 flex justify-between items-center text-white bg-black/50 absolute top-0 w-full z-10">
+          <div className="p-4 flex justify-between items-center text-white bg-black/50 absolute top-0 w-full z-10 shadow-md">
             <h3 className="font-bold text-lg flex items-center gap-2"><Camera size={20}/> Scan Barcode</h3>
             <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={24}/></button>
           </div>
@@ -165,25 +167,25 @@
                 <div className="w-full max-w-md p-6 border-2 border-dashed border-gray-600 rounded-3xl bg-gray-900 flex flex-col items-center justify-center text-center gap-4">
                   <AlertCircle size={48} className="text-red-500" />
                   <p className="text-white font-bold text-lg">Kamera Diblokir / Tidak Tersedia</p>
-                  <p className="text-gray-400 text-sm">Gunakan fitur Upload Foto untuk memindai barcode dari galeri Anda.</p>
+                  <p className="text-gray-400 text-sm">Browser memblokir akses kamera (harus HTTPS/Izin ditolak). Silakan gunakan fitur <strong className="text-white">Upload Foto</strong> di bawah untuk memindai dari galeri.</p>
                 </div>
              ) : (
                 <div id="reader" className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border-4 border-gray-800 bg-black"></div>
              )}
           </div>
 
-          <div className="p-6 pb-10 text-center absolute bottom-0 w-full bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col items-center gap-3">
+          <div className="p-6 pb-10 text-center absolute bottom-0 w-full bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col items-center gap-4">
              <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-             <button onClick={() => fileInputRef.current.click()} className="bg-white text-black px-6 py-3 rounded-full font-bold flex items-center gap-2 shadow-xl hover:bg-gray-200 active:scale-95 transition-all">
+             <button onClick={() => fileInputRef.current.click()} className="bg-white text-black px-6 py-3.5 rounded-full font-black flex items-center gap-3 shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:bg-gray-200 active:scale-95 transition-all">
                <Image size={20} /> Upload Foto Barcode
              </button>
-             {!camError && <span className="text-gray-400 text-xs font-medium">Atau arahkan kamera ke barcode</span>}
+             {!camError && <span className="text-gray-300 text-xs font-medium bg-black/50 px-4 py-1.5 rounded-full">Atau arahkan kamera ke barcode</span>}
           </div>
         </div>
       );
     }
 
-    // --- HELPER UNTUK TANGGAL BULAN/TAHUN ---
+    // --- HELPER DATE ---
     const getMonthYear = (dateString) => {
       try {
         const datePart = dateString.split(/[, ]+/)[0]; 
@@ -207,8 +209,12 @@
       } catch (e) { return yyyymm; }
     };
 
+
+    // ==========================================
+    // --- KOMPONEN UTAMA APLIKASI (APP) ---
+    // ==========================================
     function App() {
-      // --- CUSTOM DIALOG STATE ---
+      // --- STATE MODAL & DIALOG GLOBAL ---
       const [dialogConfig, setDialogConfig] = useState(null);
       const showAlert = useCallback((message, title = "Informasi") => setDialogConfig({ type: 'alert', title, message }), []);
       const showConfirm = useCallback((message, onConfirm, title = "Konfirmasi") => setDialogConfig({ type: 'confirm', title, message, onConfirm }), []);
@@ -223,7 +229,8 @@
       const [isSupported, setIsSupported] = useState(true);
 
       const [activeTab, setActiveTab] = useState('kasir');
-      const [showScanner, setShowScanner] = useState(false);
+      const [showScanner, setShowScanner] = useState(false); // Scanner Modal Kasir
+      const [showProductScanner, setShowProductScanner] = useState(false); // Scanner Modal Input Produk
       
       const [products, setProducts] = useState(() => { const saved = localStorage.getItem('pos_products'); return saved ? JSON.parse(saved) : INITIAL_PRODUCTS; });
       const [salesHistory, setSalesHistory] = useState(() => { const saved = localStorage.getItem('pos_sales'); return saved ? JSON.parse(saved) : []; });
@@ -241,25 +248,27 @@
       });
       const [categories, setCategories] = useState(() => { const saved = localStorage.getItem('pos_categories'); return saved ? JSON.parse(saved) : ['Minuman', 'Makanan', 'Cemilan', 'Lainnya']; });
       
+      // State Form
       const [newCategory, setNewCategory] = useState('');
       const [editingCategory, setEditingCategory] = useState(null);
       const [editCategoryInput, setEditCategoryInput] = useState('');
       
       const [editingId, setEditingId] = useState(null);
       const [formData, setFormData] = useState({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
+      
+      // State Kasir/Transaksi
       const [currentReceipt, setCurrentReceipt] = useState(null);
       const [showPaymentModal, setShowPaymentModal] = useState(false);
       const [cashAmount, setCashAmount] = useState('');
       const [paymentMethod, setPaymentMethod] = useState('Tunai');
 
-      // Kasir Search
-      const [searchTerm, setSearchTerm] = useState('');
+      // State Pencarian & Filter
+      const [searchTerm, setSearchTerm] = useState(''); // Kasir
+      const [invSearchTerm, setInvSearchTerm] = useState(''); // Inventory
+      const [invStockFilter, setInvStockFilter] = useState('all'); // Inventory 'all' | 'low'
+      const [selectedMonth, setSelectedMonth] = useState('all'); // Rekap
       
-      // Inventory (Produk Tab) Filters
-      const [invSearchTerm, setInvSearchTerm] = useState('');
-      const [invStockFilter, setInvStockFilter] = useState('all'); // 'all' | 'low'
-      
-      // Menggunakan ref agar event listener keyboard memiliki data terbaru
+      // Referensi Realtime untuk event listener murni DOM
       const productsRef = useRef(products);
       useEffect(() => { productsRef.current = products; }, [products]);
 
@@ -268,41 +277,40 @@
       const lastScanTime = useRef(0);
       const lastKeyTime = useRef(0); 
 
-      // Filter Rekap Bulan
-      const [selectedMonth, setSelectedMonth] = useState('all');
-
+      // State Autentikasi
       const [isAuthenticated, setIsAuthenticated] = useState(false);
       const [pinCode, setPinCode] = useState(() => localStorage.getItem('pos_pin') || '1234');
       const [loginInput, setLoginInput] = useState('');
       const [loginError, setLoginError] = useState('');
-
       const [oldPinInput, setOldPinInput] = useState('');
       const [newPinInput, setNewPinInput] = useState('');
       const [confirmPinInput, setConfirmPinInput] = useState('');
       const [pinMessage, setPinMessage] = useState({ type: '', text: '' });
 
+      // Referensi File Input tersembunyi
       const fileInputRef = useRef(null);
       const importFileRef = useRef(null); 
       const qrisInputRef = useRef(null);
 
-      // --- EFEK SIMPAN OTOMATIS ---
+      // --- EFEK SIMPAN OTOMATIS LOCALSTORAGE ---
       useEffect(() => { localStorage.setItem('pos_products', JSON.stringify(products)); }, [products]);
       useEffect(() => { localStorage.setItem('pos_sales', JSON.stringify(salesHistory)); }, [salesHistory]);
       useEffect(() => { localStorage.setItem('pos_store_info', JSON.stringify(storeInfo)); }, [storeInfo]);
       useEffect(() => { localStorage.setItem('pos_pin', pinCode); }, [pinCode]);
       useEffect(() => { localStorage.setItem('pos_categories', JSON.stringify(categories)); }, [categories]);
 
-      // --- LISTENER KEYBOARD SCANNER FISIK (USB/BLUETOOTH) ---
+      // --- LISTENER KEYBOARD (UNTUK SCANNER BARCODE FISIK / USB) ---
       useEffect(() => {
-        if (activeTab !== 'kasir' || showScanner) return;
+        // Abaikan jika tidak di tab kasir, atau kamera scanner sedang terbuka
+        if (activeTab !== 'kasir' || showScanner || showProductScanner) return;
         
         const handleKeyDown = (e) => {
-          // Abaikan jika user sedang mengetik manual di dalam input search/form
-          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+          // Abaikan jika user sedang mengetik manual di input text/textarea/number
+          if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
           
           const currentTime = Date.now();
 
-          // Jika jeda antar tombol > 50ms, ini ketikan manusia biasa, bukan alat scanner.
+          // Deteksi: Jika pengetikan lambat (> 50ms per karakter), itu diketik manual oleh manusia. Reset buffer.
           if (currentTime - lastKeyTime.current > 50) {
             barcodeBuffer.current = '';
           }
@@ -310,11 +318,12 @@
           
           if (e.key === 'Enter') {
             if (barcodeBuffer.current.length >= 3) { 
-              handleBarcodeScanned(barcodeBuffer.current);
+              handleBarcodeScannedKasir(barcodeBuffer.current);
             }
             barcodeBuffer.current = '';
           } else if (e.key.length === 1) {
             barcodeBuffer.current += e.key;
+            // Clear otomatis jika tidak ada enter dalam 100ms
             clearTimeout(barcodeTimeout.current);
             barcodeTimeout.current = setTimeout(() => { barcodeBuffer.current = ''; }, 100);
           }
@@ -322,12 +331,12 @@
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [activeTab, showScanner]); 
+      }, [activeTab, showScanner, showProductScanner]); 
 
-      // --- HANDLER BARCODE SCANNED (KAMERA & ALAT FISIK) ---
-      const handleBarcodeScanned = (code) => {
+      // --- HANDLER BARCODE KASIR (TRANSAKSI) ---
+      const handleBarcodeScannedKasir = (code) => {
         const now = Date.now();
-        if (now - lastScanTime.current < 1500) return; // Debounce 1.5 detik cegah spam
+        if (now - lastScanTime.current < 1500) return; // Debounce 1.5 detik agar tidak ter-scan double
         
         const product = productsRef.current.find(p => p.barcode === code);
         if (product) {
@@ -339,13 +348,13 @@
         }
       };
 
-      // --- GENERATE AUTO BARCODE ---
+      // --- GENERATE AUTO BARCODE PRODUK BARU ---
       const handleGenerateBarcode = () => {
         const autoCode = Math.floor(1000000000 + Math.random() * 9000000000).toString();
         setFormData({ ...formData, barcode: autoCode });
       };
 
-      // --- CETAK LABEL BARCODE (STIKER) ---
+      // --- CETAK LABEL BARCODE MENGGUNAKAN JSBARCODE (STIKER) ---
       const printBarcodeLabel = (product) => {
         if (!product.barcode) return showAlert('Produk ini belum memiliki barcode!', 'Error');
 
@@ -366,6 +375,7 @@
           iframe.style.display = 'none';
           document.body.appendChild(iframe);
 
+          // Format HTML Untuk Print Stiker Label Thermal 50x30mm
           const html = `
             <html><head><title>Print_Barcode_${product.barcode}</title>
               <style>
@@ -386,6 +396,7 @@
           iframe.contentWindow.document.write(html);
           iframe.contentWindow.document.close();
 
+          // Cleanup iframe memory
           setTimeout(() => {
             if (document.body.contains(iframe)) document.body.removeChild(iframe);
           }, 3000);
@@ -395,6 +406,7 @@
         }
       };
 
+      // --- DATABASE BACKUP & RESTORE ---
       const handleBackupData = () => {
         const backupData = {
           products, salesHistory, storeInfo, categories, pinCode,
@@ -417,6 +429,7 @@
           try {
             const importedData = JSON.parse(event.target.result);
             if (importedData.products && importedData.salesHistory && importedData.storeInfo) {
+              // Validasi dan konversi (Backward compatibility untuk HPP)
               const updatedProducts = importedData.products.map(p => ({
                  ...p, hpp: p.hpp !== undefined ? Number(p.hpp) : 0 
               }));
@@ -451,6 +464,7 @@
         }
       };
 
+      // --- MANAJEMEN PRODUK (CRUD) ---
       const handleProductSubmit = (e) => {
         e.preventDefault();
         if (!formData.name || formData.price === '' || formData.stock === '') return;
@@ -468,26 +482,35 @@
         } else {
           setProducts([...products, { id: Date.now(), ...finalProduct }]);
         }
+        // Reset form
         setFormData({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       };
 
       const handleEditProduct = (product) => {
         setEditingId(product.id);
-        setFormData({ name: product.name, price: product.price, hpp: product.hpp || '', category: product.category, stock: product.stock !== undefined ? product.stock : 0, barcode: product.barcode || '' });
+        setFormData({ 
+          name: product.name, 
+          price: product.price, 
+          hpp: product.hpp || '', 
+          category: product.category, 
+          stock: product.stock !== undefined ? product.stock : 0, 
+          barcode: product.barcode || '' 
+        });
         setActiveTab('produk');
       };
 
       const handleDeleteProduct = (id) => {
         showConfirm('Yakin ingin menghapus produk ini?', () => {
           setProducts(prev => prev.filter(p => p.id !== id));
-          removeFromCart(id);
+          removeFromCart(id); // Hapus juga dari keranjang jika ada
         });
       };
 
       useEffect(() => {
+        // Cek dukungan Web Bluetooth
         if (!navigator.bluetooth) {
           setIsSupported(false);
-          setErrorMsg('Browser ini tidak mendukung Bluetooth. Gunakan Chrome/Edge.');
+          setErrorMsg('Browser/Perangkat ini tidak mendukung koneksi Bluetooth langsung.');
         }
       }, []);
 
@@ -496,9 +519,10 @@
       };
 
       const formatNumberBT = (num) => {
-        return (Number(num) || 0).toLocaleString('id-ID');
+        return (Number(num) || 0).toLocaleString('id-ID'); // Format angka tanpa Rp untuk Thermal
       }
 
+      // --- MANAJEMEN KERANJANG TRANSAKSI ---
       const addToCart = (product) => {
         const currentStock = product.stock !== undefined ? product.stock : 0;
         if (currentStock <= 0) return showAlert('Stok produk habis!', 'Peringatan');
@@ -529,7 +553,7 @@
               return { ...item, quantity: newQuantity };
             }
             return item;
-          }).filter(item => item.quantity > 0)
+          }).filter(item => item.quantity > 0) // Otomatis hapus jika quantity = 0
         );
       };
 
@@ -540,6 +564,7 @@
       const total = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
       const changeAmount = Number(cashAmount || 0) - total;
 
+      // --- KONEKSI PRINTER THERMAL BLUETOOTH ---
       const connectToPrinter = async () => {
         setIsConnecting(true);
         setErrorMsg('');
@@ -565,7 +590,7 @@
             if (writeCharacteristic) break;
           }
 
-          if (!writeCharacteristic) throw new Error('Printer tidak bisa menerima data.');
+          if (!writeCharacteristic) throw new Error('Printer tidak dapat menerima data.');
 
           setPrinterDevice(device);
           setPrinterCharacteristic(writeCharacteristic);
@@ -573,7 +598,7 @@
           device.addEventListener('gattserverdisconnected', () => {
             setPrinterDevice(null);
             setPrinterCharacteristic(null);
-            setErrorMsg('Printer terputus.');
+            setErrorMsg('Printer terputus dari sistem.');
           });
         } catch (err) {
           console.error(err);
@@ -585,12 +610,16 @@
 
       const sendTextToPrinter = async (characteristic, text) => {
         const encoder = new TextEncoder();
-        const initCmd = new Uint8Array([0x1B, 0x40]);
+        const initCmd = new Uint8Array([0x1B, 0x40]); // Reset Printer
         await characteristic.writeValue(initCmd);
         const data = encoder.encode(text);
+        
+        // Kirim bergelombang agar buffer printer tidak penuh
         for (let i = 0; i < data.length; i += 100) {
           await characteristic.writeValue(data.slice(i, i + 100));
         }
+        
+        // Feed kertas 3 baris
         const feedCmd = new Uint8Array([0x0A, 0x0A, 0x0A]);
         await characteristic.writeValue(feedCmd);
       };
@@ -602,6 +631,7 @@
         return ' '.repeat(leftPad) + str + ' '.repeat(length - str.length - leftPad);
       };
 
+      // --- PRINT STRUK TRANSAKSI (PDF/WEB) ---
       const printReceiptAsPDF = () => {
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
@@ -664,7 +694,7 @@
         });
       }, [products, invSearchTerm, invStockFilter]);
 
-      // --- FILTER LOG PENJUALAN PER BULAN ---
+      // --- FILTER LOG PENJUALAN PER BULAN (TAB REKAP) ---
       const availableMonths = useMemo(() => {
         const months = new Set();
         salesHistory.forEach(sale => {
@@ -679,12 +709,13 @@
         return salesHistory.filter(sale => getMonthYear(sale.date) === selectedMonth);
       }, [salesHistory, selectedMonth]);
 
-      // Hitung Profit Dinamis
+      // --- HITUNGAN PROFIT DINAMIS ---
       const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
       const totalHpp = filteredSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + ((item.hpp || 0) * item.quantity), 0), 0);
       const totalProfit = totalRevenue - totalHpp;
 
 
+      // --- PRINT REKAP PENJUALAN (PDF) ---
       const printSalesSummaryAsPDF = () => {
         if (filteredSales.length === 0) return showAlert('Tidak ada data rekap pada periode ini.', 'Peringatan');
         
@@ -770,6 +801,7 @@
         }, 500);
       };
 
+      // --- PRINT STRUK KE BLUETOOTH THERMAL ---
       const printBluetooth = async (saleData) => {
         if (!printerCharacteristic) return showAlert('Printer Bluetooth belum terhubung!', 'Peringatan');
         try {
@@ -825,6 +857,7 @@
         }
       };
 
+      // --- TRANSAKSI ---
       const handlePayment = () => {
         if (cart.length === 0) return showAlert('Keranjang kosong!', 'Peringatan');
         setCashAmount('');
@@ -853,6 +886,7 @@
           cashier: storeInfo.cashierName || 'Kasir'
         };
         
+        // Kurangi stok
         setProducts(prevProducts => prevProducts.map(p => {
           const cartItem = cart.find(c => c.product.id === p.id);
           if (cartItem) {
@@ -865,9 +899,10 @@
         setSalesHistory(prev => [newSale, ...prev]);
         setCart([]); 
         setShowPaymentModal(false);
-        setCurrentReceipt(newSale);
+        setCurrentReceipt(newSale); // Tampilkan modal struk
       };
 
+      // --- AUTENTIKASI PIN & PENGATURAN KATEGORI ---
       const handleLogin = (e) => {
         e.preventDefault();
         if (loginInput === pinCode) {
@@ -880,7 +915,7 @@
       };
 
       const handleLogout = () => {
-        showConfirm('Yakin ingin keluar dari sistem kasir?', () => {
+        showConfirm('Yakin ingin mengunci sistem kasir?', () => {
           setIsAuthenticated(false);
           setActiveTab('kasir');
         });
@@ -917,12 +952,11 @@
 
       const handleDeleteCategory = (cat) => {
         if (categories.length <= 1) return showAlert('Minimal harus ada 1 kategori!', 'Peringatan');
-        showConfirm(`Yakin ingin menghapus kategori "${cat}"? Produk dengan kategori ini akan dipindah ke kategori "${categories.find(c => c !== cat)}".`, () => {
+        showConfirm(`Yakin ingin menghapus kategori "${cat}"? Produk terkait akan dipindah ke kategori "${categories.find(c => c !== cat)}".`, () => {
           const newCategories = categories.filter(c => c !== cat);
           setCategories(newCategories);
           
           setProducts(prev => prev.map(p => p.category === cat ? { ...p, category: newCategories[0] } : p));
-          
           if (formData.category === cat) setFormData({ ...formData, category: newCategories[0] });
         });
       };
@@ -960,6 +994,10 @@
         reader.readAsDataURL(file);
       };
 
+      // ==========================================
+      // --- VIEW RENDER ---
+      // ==========================================
+      
       if (!isAuthenticated) {
         return (
           <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans text-gray-800">
@@ -985,6 +1023,7 @@
 
       return (
         <React.Fragment>
+          {/* CSS Print Khusus Web */}
           <style>{`@media print { @page { margin: 0; size: 58mm auto; } body { margin: 0; padding: 10px; background: white; } }`}</style>
           
           <div className="min-h-screen bg-gray-50 flex flex-col font-sans print:hidden">
@@ -1006,7 +1045,7 @@
                   ) : (
                     <button onClick={connectToPrinter} disabled={isConnecting || !isSupported} className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm hidden sm:flex"><Printer size={18} />{isConnecting ? 'Menghubungkan...' : 'Hubungkan Printer'}</button>
                   )}
-                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500/20 text-red-100 hover:bg-red-500/30 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border border-red-400" title="Keluar"><LogOut size={16} className="sm:hidden" /><span className="hidden sm:inline">Keluar</span></button>
+                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500/20 text-red-100 hover:bg-red-500/30 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border border-red-400" title="Keluar"><LogOut size={16} className="sm:hidden" /><span className="hidden sm:inline">Kunci</span></button>
                 </div>
               </div>
             </header>
@@ -1022,11 +1061,12 @@
 
             <main className="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col lg:flex-row gap-6 overflow-y-auto lg:h-[calc(100vh-140px)]">
               
+              {/* TAB: KASIR */}
               {activeTab === 'kasir' && (
                 <React.Fragment>
                   <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px] lg:min-h-0">
                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
-                      <h2 className="font-bold text-gray-700 text-lg">Daftar Produk</h2>
+                      <h2 className="font-bold text-gray-700 text-lg">Katalog Produk</h2>
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search size={18} className="text-gray-400" /></div>
@@ -1036,12 +1076,12 @@
                             onChange={(e) => setSearchTerm(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
-                                handleBarcodeScanned(searchTerm);
+                                handleBarcodeScannedKasir(searchTerm);
                                 setSearchTerm('');
                               }
                             }}
-                            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all shadow-inner" 
-                            placeholder="Cari produk / ketik barcode manual..."
+                            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" 
+                            placeholder="Cari nama produk / kode barcode..."
                           />
                         </div>
                         <button onClick={() => setShowScanner(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-xl shadow-md flex items-center justify-center transition-colors" title="Scan via Kamera HP/Laptop">
@@ -1069,6 +1109,7 @@
                     </div>
                   </div>
 
+                  {/* Keranjang Panel */}
                   <div className="w-full lg:w-[400px] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[500px] lg:h-full shrink-0">
                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                       <h2 className="font-bold text-gray-700 text-lg flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Keranjang</h2>
@@ -1098,9 +1139,12 @@
                 </React.Fragment>
               )}
 
+              {/* TAB: KELOLA PRODUK (INVENTORY) */}
               {activeTab === 'produk' && (
                 <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden w-full">
-                  <div className="w-full lg:w-1/3 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-fit">
+                  
+                  {/* Form Tambah/Edit */}
+                  <div className="w-full lg:w-1/3 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-fit shrink-0">
                     <h2 className="font-bold text-gray-800 mb-6 flex items-center gap-2 text-xl">{editingId ? <Edit2 size={24} className="text-blue-600"/> : <Plus size={24} className="text-blue-600"/>}{editingId ? 'Edit Produk' : 'Produk Baru'}</h2>
                     <form onSubmit={handleProductSubmit} className="flex flex-col gap-5">
                       <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Nama Produk</label><input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Contoh: Kopi Hitam Panas"/></div>
@@ -1121,10 +1165,13 @@
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode</label>
+                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode Produk</label>
                         <div className="flex gap-2">
-                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Isi manual / klik Auto"/>
-                          <button type="button" onClick={handleGenerateBarcode} className="bg-gray-100 text-gray-600 px-5 rounded-xl font-bold hover:bg-blue-100 hover:text-blue-600 transition-colors flex items-center justify-center border-2 border-gray-200" title="Generate Barcode Otomatis">
+                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Isi manual / auto"/>
+                          <button type="button" onClick={() => setShowProductScanner(true)} className="bg-blue-50 text-blue-600 px-4 rounded-xl font-bold hover:bg-blue-100 transition-colors flex items-center justify-center border-2 border-blue-200 shrink-0" title="Scan Barcode Kemasan Asli">
+                            <Camera size={20} />
+                          </button>
+                          <button type="button" onClick={handleGenerateBarcode} className="bg-gray-100 text-gray-600 px-4 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center border-2 border-gray-200 shrink-0" title="Generate Barcode Otomatis">
                             Auto
                           </button>
                         </div>
@@ -1136,18 +1183,19 @@
                     </form>
                   </div>
 
+                  {/* Tabel Inventory */}
                   <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
                     
-                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
+                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center shrink-0">
                       <h2 className="font-bold text-gray-700 text-lg flex-shrink-0">Inventory ({filteredInventory.length})</h2>
                       <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
                         <div className="relative flex-1 sm:w-48">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search size={14} className="text-gray-400" /></div>
-                          <input type="text" value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none" placeholder="Cari nama/barcode..."/>
+                          <input type="text" value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none shadow-sm" placeholder="Cari nama/barcode..."/>
                         </div>
                         <div className="relative flex-1 sm:w-48">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><FilterIcon size={14} className="text-gray-400" /></div>
-                          <select value={invStockFilter} onChange={(e) => setInvStockFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none appearance-none cursor-pointer">
+                          <select value={invStockFilter} onChange={(e) => setInvStockFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none appearance-none cursor-pointer shadow-sm">
                              <option value="all">Semua Status Stok</option>
                              <option value="low">Stok Menipis (≤ 5)</option>
                           </select>
@@ -1189,12 +1237,14 @@
                 </div>
               )}
 
+              {/* TAB: REKAP PENJUALAN */}
               {activeTab === 'rekap' && (
                 <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                       <h2 className="font-bold text-gray-700 text-lg">Log Penjualan</h2>
                       
                       <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                        {/* FILTER BULAN */}
                         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm flex-1 md:flex-none">
                            <Calendar size={18} className="text-gray-400" />
                            <select 
@@ -1253,8 +1303,9 @@
                 </div>
               )}
 
+              {/* TAB: PENGATURAN TOKO */}
               {activeTab === 'pengaturan' && (
-                <div className="flex-1 flex flex-col items-center w-full max-w-4xl mx-auto">
+                <div className="flex-1 flex flex-col items-center w-full max-w-4xl mx-auto pb-10">
                   
                   <div className="w-full bg-gray-900 text-white rounded-3xl shadow-xl border border-gray-800 p-8 mt-4 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none"><Database size={150} /></div>
@@ -1329,7 +1380,7 @@
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-6 mb-10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-6">
                     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
                       <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><Lock size={24} className="text-blue-600"/> Keamanan (Ubah PIN)</h2>
                       <form onSubmit={handleChangePin} className="flex flex-col gap-4">
@@ -1372,131 +1423,150 @@
                   </div>
                 </div>
               )}
-
-              {/* Modal Pembayaran */}
-              {showPaymentModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
-                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                      <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Pembayaran</h3>
-                      <button onClick={() => setShowPaymentModal(false)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
-                    </div>
-                    <div className="p-8 flex flex-col gap-6">
-                      <div className="flex justify-between items-center text-lg font-bold bg-blue-50 p-6 rounded-3xl border border-blue-100">
-                        <span className="text-blue-500 text-sm uppercase tracking-widest">Total</span><span className="text-blue-700 text-3xl font-black">{formatRupiah(total)}</span>
-                      </div>
-
-                      <div className="flex bg-gray-100 p-1.5 rounded-2xl">
-                        <button onClick={() => setPaymentMethod('Tunai')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${paymentMethod === 'Tunai' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tunai</button>
-                        <button onClick={() => setPaymentMethod('Online')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${paymentMethod === 'Online' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><QrCode size={16}/> QRIS / Transfer</button>
-                      </div>
-
-                      {paymentMethod === 'Tunai' ? (
-                        <React.Fragment>
-                          <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Uang Tunai Diterima (Rp)</label>
-                            <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-4 border-gray-50 bg-gray-50 rounded-3xl p-6 text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <button onClick={() => setCashAmount(total)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
-                            <button onClick={() => setCashAmount(total > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{total > 50000 ? '100.000' : '50.000'}</button>
-                          </div>
-                          <div className="flex flex-col items-center mt-2 p-6 rounded-3xl bg-gray-900 text-white shadow-xl">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
-                            <span className={`text-3xl font-black ${changeAmount < 0 ? 'text-red-400' : 'text-green-400'}`}>{cashAmount === '' ? '-' : formatRupiah(changeAmount)}</span>
-                          </div>
-                        </React.Fragment>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed border-blue-200 rounded-3xl bg-blue-50/50 h-full max-h-[300px] overflow-y-auto">
-                          {storeInfo.qrisImage ? (
-                            <img src={storeInfo.qrisImage} alt="QRIS" className="w-32 h-32 object-contain mb-3 rounded-lg shadow-sm border border-gray-200 bg-white p-1" />
-                          ) : (
-                            <QrCode size={48} className="text-blue-300 mb-4" />
-                          )}
-                          <p className="text-sm font-bold text-blue-800 text-center mb-1">Menunggu Pembayaran Online</p>
-                          {storeInfo.bankInfo ? (
-                            <div className="text-xs text-blue-700 text-center mt-2 whitespace-pre-line bg-white p-3 rounded-xl border border-blue-100 w-full">{storeInfo.bankInfo}</div>
-                          ) : (
-                            <p className="text-xs text-blue-500 text-center max-w-[200px]">Pastikan dana sudah masuk ke rekening/E-Wallet sebelum memproses.</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-6 bg-gray-50 border-t border-gray-100">
-                      <button onClick={processPayment} disabled={paymentMethod === 'Tunai' && (cashAmount === '' || changeAmount < 0)} className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all active:scale-95 shadow-lg shadow-blue-100">Proses Transaksi</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Modal Struk */}
-              {currentReceipt && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setCurrentReceipt(null)}>
-                  <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                      <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Struk Berhasil</h3>
-                      <button onClick={() => setCurrentReceipt(null)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
-                    </div>
-                    
-                    <div className="flex-1 overflow-y-auto p-8 bg-gray-100 flex justify-center shadow-inner">
-                      <div className="bg-white w-full shadow-2xl p-6 font-mono text-[10px] text-gray-800 flex flex-col border border-gray-200 rounded-md relative overflow-hidden" style={{ maxWidth: '300px' }}>
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-b from-gray-100 to-transparent"></div>
-                        {storeInfo.logo && <img src={storeInfo.logo} className="w-16 h-16 object-contain mx-auto mb-4" />}
-                        <div className="text-center font-black text-sm mb-1 uppercase tracking-tighter">{storeInfo.name}</div>
-                        <div className="text-center text-[8px] mb-4 pb-4 border-b border-dashed border-gray-300 leading-tight uppercase font-bold text-gray-400">{storeInfo.address}</div>
-                        
-                        <div className="mb-1 flex justify-between font-bold text-gray-500"><span>KASIR:</span><span className="text-gray-800">{currentReceipt.cashier || storeInfo.cashierName}</span></div>
-                        <div className="mb-4 flex justify-between font-bold text-gray-500"><span>WAKTU:</span><span className="text-gray-800">{currentReceipt.date}</span></div>
-                        
-                        <div className="flex flex-col gap-2 mb-4 pb-4 border-b border-dashed border-gray-300">
-                          {currentReceipt.items.map((item, idx) => (
-                            <div key={idx}>
-                              <div className="font-black text-gray-900 mb-0.5">{item.product.name}</div>
-                              <div className="flex justify-between font-bold text-gray-500"><span>{item.quantity} x {formatRupiah(item.product.price)}</span><span className="text-gray-900">{formatRupiah(item.quantity * item.product.price)}</span></div>
-                            </div>
-                          ))}
-                        </div>
-                        
-                        <div className="flex justify-between font-black text-sm mb-1"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
-                        <div className="flex justify-between font-bold text-gray-500 mb-1"><span>METODE</span><span className="uppercase">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
-                        {currentReceipt.paymentMethod !== 'Online' && (
-                          <React.Fragment>
-                            <div className="flex justify-between font-bold text-gray-400 mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
-                            <div className="flex justify-between font-black text-gray-900 mb-6"><span>KEMBALIAN</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
-                          </React.Fragment>
-                        )}
-                        
-                        <div className={`text-center font-black border-t border-dashed border-gray-300 pt-4 text-gray-400 tracking-widest uppercase ${currentReceipt.paymentMethod === 'Online' ? 'mt-4' : ''}`}>LUNAS</div>
-                        <div className="text-center text-[8px] mt-1 font-bold text-gray-400">Terima Kasih Atas Kunjungan Anda</div>
-                        <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-t from-gray-100 to-transparent"></div>
-                      </div>
-                    </div>
-
-                    <div className="p-6 bg-white border-t border-gray-100 flex flex-col gap-3">
-                      <button onClick={() => printBluetooth(currentReceipt)} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 flex justify-center items-center gap-3 transition-all shadow-lg shadow-blue-100 active:scale-95"><Printer size={20} /> Cetak Struk (BT)</button>
-                      <button onClick={printReceiptAsPDF} className="w-full py-4 bg-white text-gray-800 rounded-2xl font-black hover:bg-gray-50 flex justify-center items-center gap-3 border-2 border-gray-100 transition-all active:scale-95"><FileText size={20} /> Simpan PDF / Web</button>
-                      <button onClick={() => setCurrentReceipt(null)} className="w-full py-3 bg-red-50 text-red-500 rounded-2xl font-black hover:bg-red-100 transition-all text-xs">Selesai</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
             </main>
           </div>
 
-          {/* Modal Camera Scanner */}
+          {/* =========================================
+              MODALS & OVERLAYS 
+          ========================================= */}
+
+          {/* 1. Modal Camera Scanner untuk KASIR */}
           {showScanner && (
             <CameraScannerModal 
               onClose={() => setShowScanner(false)} 
               onScan={(code) => {
-                 handleBarcodeScanned(code);
-                 setShowScanner(false);
+                handleBarcodeScannedKasir(code);
+                setShowScanner(false);
               }} 
               showAlert={showAlert}
             />
           )}
 
-          {/* Tampilan Print Bawaan Web (Disembunyikan di UI Utama) */}
+          {/* 2. Modal Camera Scanner khusus TAMBAH PRODUK BARU */}
+          {showProductScanner && (
+            <CameraScannerModal 
+              onClose={() => setShowProductScanner(false)} 
+              onScan={(code) => {
+                setFormData(prev => ({ ...prev, barcode: code }));
+                setShowProductScanner(false);
+                showAlert(`Barcode berhasil dibaca: ${code}`, 'Sukses');
+              }} 
+              showAlert={showAlert}
+            />
+          )}
+
+          {/* 3. Modal Pembayaran */}
+          {showPaymentModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
+              <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                  <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Pembayaran</h3>
+                  <button onClick={() => setShowPaymentModal(false)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
+                </div>
+                <div className="p-8 flex flex-col gap-6">
+                  <div className="flex justify-between items-center text-lg font-bold bg-blue-50 p-6 rounded-3xl border border-blue-100">
+                    <span className="text-blue-500 text-sm uppercase tracking-widest">Total</span><span className="text-blue-700 text-3xl font-black">{formatRupiah(total)}</span>
+                  </div>
+
+                  <div className="flex bg-gray-100 p-1.5 rounded-2xl">
+                    <button onClick={() => setPaymentMethod('Tunai')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${paymentMethod === 'Tunai' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tunai</button>
+                    <button onClick={() => setPaymentMethod('Online')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${paymentMethod === 'Online' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><QrCode size={16}/> QRIS / Transfer</button>
+                  </div>
+
+                  {paymentMethod === 'Tunai' ? (
+                    <React.Fragment>
+                      <div>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Uang Tunai Diterima (Rp)</label>
+                        <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-4 border-gray-50 bg-gray-50 rounded-3xl p-6 text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setCashAmount(total)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
+                        <button onClick={() => setCashAmount(total > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{total > 50000 ? '100.000' : '50.000'}</button>
+                      </div>
+                      <div className="flex flex-col items-center mt-2 p-6 rounded-3xl bg-gray-900 text-white shadow-xl">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
+                        <span className={`text-3xl font-black ${changeAmount < 0 ? 'text-red-400' : 'text-green-400'}`}>{cashAmount === '' ? '-' : formatRupiah(changeAmount)}</span>
+                      </div>
+                    </React.Fragment>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed border-blue-200 rounded-3xl bg-blue-50/50 h-full max-h-[300px] overflow-y-auto">
+                      {storeInfo.qrisImage ? (
+                        <img src={storeInfo.qrisImage} alt="QRIS" className="w-32 h-32 object-contain mb-3 rounded-lg shadow-sm border border-gray-200 bg-white p-1" />
+                      ) : (
+                        <QrCode size={48} className="text-blue-300 mb-4" />
+                      )}
+                      <p className="text-sm font-bold text-blue-800 text-center mb-1">Menunggu Pembayaran Online</p>
+                      {storeInfo.bankInfo ? (
+                        <div className="text-xs text-blue-700 text-center mt-2 whitespace-pre-line bg-white p-3 rounded-xl border border-blue-100 w-full">{storeInfo.bankInfo}</div>
+                      ) : (
+                        <p className="text-xs text-blue-500 text-center max-w-[200px]">Pastikan dana sudah masuk ke rekening/E-Wallet sebelum memproses.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="p-6 bg-gray-50 border-t border-gray-100">
+                  <button onClick={processPayment} disabled={paymentMethod === 'Tunai' && (cashAmount === '' || changeAmount < 0)} className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all active:scale-95 shadow-lg shadow-blue-100">Proses Transaksi</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 4. Modal Struk Penjualan */}
+          {currentReceipt && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setCurrentReceipt(null)}>
+              <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                  <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Struk Berhasil</h3>
+                  <button onClick={() => setCurrentReceipt(null)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-8 bg-gray-100 flex justify-center shadow-inner">
+                  <div className="bg-white w-full shadow-2xl p-6 font-mono text-[10px] text-gray-800 flex flex-col border border-gray-200 rounded-md relative overflow-hidden" style={{ maxWidth: '300px' }}>
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-b from-gray-100 to-transparent"></div>
+                    {storeInfo.logo && <img src={storeInfo.logo} className="w-16 h-16 object-contain mx-auto mb-4" />}
+                    <div className="text-center font-black text-sm mb-1 uppercase tracking-tighter">{storeInfo.name}</div>
+                    <div className="text-center text-[8px] mb-4 pb-4 border-b border-dashed border-gray-300 leading-tight uppercase font-bold text-gray-400">{storeInfo.address}</div>
+                    
+                    <div className="mb-1 flex justify-between font-bold text-gray-500"><span>KASIR:</span><span className="text-gray-800">{currentReceipt.cashier || storeInfo.cashierName}</span></div>
+                    <div className="mb-4 flex justify-between font-bold text-gray-500"><span>WAKTU:</span><span className="text-gray-800">{currentReceipt.date}</span></div>
+                    
+                    <div className="flex flex-col gap-2 mb-4 pb-4 border-b border-dashed border-gray-300">
+                      {currentReceipt.items.map((item, idx) => (
+                        <div key={idx}>
+                          <div className="font-black text-gray-900 mb-0.5">{item.product.name}</div>
+                          <div className="flex justify-between font-bold text-gray-500"><span>{item.quantity} x {formatRupiah(item.product.price)}</span><span className="text-gray-900">{formatRupiah(item.quantity * item.product.price)}</span></div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="flex justify-between font-black text-sm mb-1"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
+                    <div className="flex justify-between font-bold text-gray-500 mb-1"><span>METODE</span><span className="uppercase">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
+                    {currentReceipt.paymentMethod !== 'Online' && (
+                      <React.Fragment>
+                        <div className="flex justify-between font-bold text-gray-400 mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
+                        <div className="flex justify-between font-black text-gray-900 mb-6"><span>KEMBALIAN</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+                      </React.Fragment>
+                    )}
+                    
+                    <div className={`text-center font-black border-t border-dashed border-gray-300 pt-4 text-gray-400 tracking-widest uppercase ${currentReceipt.paymentMethod === 'Online' ? 'mt-4' : ''}`}>LUNAS</div>
+                    <div className="text-center text-[8px] mt-1 font-bold text-gray-400">Terima Kasih Atas Kunjungan Anda</div>
+                    <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-t from-gray-100 to-transparent"></div>
+                  </div>
+                </div>
+
+                <div className="p-6 bg-white border-t border-gray-100 flex flex-col gap-3">
+                  <button onClick={() => printBluetooth(currentReceipt)} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 flex justify-center items-center gap-3 transition-all shadow-lg shadow-blue-100 active:scale-95"><Printer size={20} /> Cetak Struk (BT)</button>
+                  <button onClick={printReceiptAsPDF} className="w-full py-4 bg-white text-gray-800 rounded-2xl font-black hover:bg-gray-50 flex justify-center items-center gap-3 border-2 border-gray-100 transition-all active:scale-95"><FileText size={20} /> Simpan PDF / Web</button>
+                  <button onClick={() => setCurrentReceipt(null)} className="w-full py-3 bg-red-50 text-red-500 rounded-2xl font-black hover:bg-red-100 transition-all text-xs">Selesai</button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* 5. Custom Dialog (Alert/Confirm) Global */}
+          <CustomDialog dialog={dialogConfig} onClose={closeDialog} />
+
+          {/* Tampilan Struk Hidden khusus untuk Fungsi Print Bawaan Web Browser (Native) */}
           {currentReceipt && (
             <div className="hidden print:block font-mono text-black bg-white w-full mx-auto text-[10px] leading-tight" style={{ maxWidth: '58mm' }}>
               {storeInfo.logo && <img src={storeInfo.logo} style={{ width: '30mm', display: 'block', margin: '0 auto 5mm auto' }} />}
@@ -1521,6 +1591,7 @@
               <div className="text-center text-[8px]">Silakan datang kembali :)</div>
             </div>
           )}
+
         </React.Fragment>
       );
     }
