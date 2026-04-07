@@ -19,7 +19,7 @@
   <!-- Library untuk Generate Barcode Visual (JsBarcode) -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-800">
+<body class="bg-gray-50 text-gray-800 selection:bg-blue-200">
 
   <div id="root"></div>
 
@@ -61,6 +61,8 @@
     const TrendingUp = (p) => <Icon {...p}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></Icon>;
     const Calendar = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
     const FilterIcon = (p) => <Icon {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></Icon>;
+    const Archive = (p) => <Icon {...p}><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></Icon>;
+    const Clock = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
 
     // Data Produk Dummy (untuk initial load)
     const INITIAL_PRODUCTS = [
@@ -82,7 +84,7 @@
               <h3 className="font-black text-gray-800 text-xl">{dialog.title}</h3>
             </div>
             <div className="p-6">
-              <p className="text-gray-600 font-medium">{dialog.message}</p>
+              <p className="text-gray-600 font-medium leading-relaxed">{dialog.message}</p>
             </div>
             <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
               {dialog.type === 'confirm' && (
@@ -103,43 +105,49 @@
       );
     };
 
-    // --- COMPONENT: KAMERA SCANNER (DENGAN FILE UPLOAD FALLBACK & CLEANUP MEMORI KETAT) ---
+    // --- COMPONENT: KAMERA SCANNER (DENGAN ASYNC CLEANUP) ---
     const CameraScannerModal = ({ onClose, onScan, showAlert }) => {
       const scannerRef = useRef(null);
       const fileInputRef = useRef(null);
       const [camError, setCamError] = useState(false);
+      const [isInitializing, setIsInitializing] = useState(true);
 
       useEffect(() => {
-        // Inisialisasi scanner
-        const html5QrCode = new Html5Qrcode("reader");
+        let isMounted = true;
+        let html5QrCode = new Html5Qrcode("reader");
         scannerRef.current = html5QrCode;
 
-        // Coba nyalakan kamera belakang
-        html5QrCode.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-          (decodedText) => { 
-            if(navigator.vibrate) navigator.vibrate(100);
-            onScan(decodedText); 
-          },
-          (errorMessage) => { /* Abaikan error tiap frame baca yang kosong */ }
-        ).catch(err => {
-          console.error("Camera Error:", err);
-          // Jika gagal (diblokir browser / no webcam / di iFrame), tampilkan UI error + opsi upload foto
-          setCamError(true);
-        });
+        const startCamera = async () => {
+          try {
+            await html5QrCode.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: { width: 250, height: 250 } },
+              (decodedText) => { 
+                if(navigator.vibrate) navigator.vibrate(100);
+                if (isMounted) onScan(decodedText); 
+              },
+              (errorMessage) => { /* Ignore empty frames */ }
+            );
+          } catch (err) {
+            console.error("Camera Error:", err);
+            if (isMounted) setCamError(true);
+          } finally {
+            if (isMounted) setIsInitializing(false);
+          }
+        };
 
-        // Cleanup: Hentikan dan bersihkan memori kamera saat modal ditutup
+        startCamera();
+
         return () => {
+          isMounted = false;
           if (scannerRef.current && scannerRef.current.isScanning) {
             scannerRef.current.stop()
               .then(() => scannerRef.current.clear())
-              .catch(e => console.error("Error stopping scanner", e));
+              .catch(e => console.error("Error stopping scanner:", e));
           }
         };
       }, [onScan]);
 
-      // Handler untuk scan barcode dari File Gambar (Galeri / Folder)
       const handleFileUpload = async (e) => {
         if (e.target.files.length === 0) return;
         const file = e.target.files[0];
@@ -163,14 +171,21 @@
           </div>
           
           <div className="flex-1 flex flex-col items-center justify-center relative w-full h-full mt-14 mb-20 px-4">
+             {isInitializing && !camError && (
+               <div className="text-white text-sm animate-pulse flex flex-col items-center gap-2">
+                 <Camera size={32} className="opacity-50" />
+                 Memulai Kamera...
+               </div>
+             )}
+             
              {camError ? (
                 <div className="w-full max-w-md p-6 border-2 border-dashed border-gray-600 rounded-3xl bg-gray-900 flex flex-col items-center justify-center text-center gap-4">
                   <AlertCircle size={48} className="text-red-500" />
                   <p className="text-white font-bold text-lg">Kamera Diblokir / Tidak Tersedia</p>
-                  <p className="text-gray-400 text-sm">Browser memblokir akses kamera (harus HTTPS/Izin ditolak). Silakan gunakan fitur <strong className="text-white">Upload Foto</strong> di bawah untuk memindai dari galeri.</p>
+                  <p className="text-gray-400 text-sm">Browser memblokir akses kamera. Silakan gunakan fitur <strong className="text-white">Upload Foto</strong> di bawah untuk memindai dari galeri.</p>
                 </div>
              ) : (
-                <div id="reader" className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border-4 border-gray-800 bg-black"></div>
+                <div id="reader" className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border-4 border-gray-800 bg-black ${isInitializing ? 'hidden' : 'block'}`}></div>
              )}
           </div>
 
@@ -179,13 +194,13 @@
              <button onClick={() => fileInputRef.current.click()} className="bg-white text-black px-6 py-3.5 rounded-full font-black flex items-center gap-3 shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:bg-gray-200 active:scale-95 transition-all">
                <Image size={20} /> Upload Foto Barcode
              </button>
-             {!camError && <span className="text-gray-300 text-xs font-medium bg-black/50 px-4 py-1.5 rounded-full">Atau arahkan kamera ke barcode</span>}
+             {!camError && <span className="text-gray-300 text-xs font-medium bg-black/50 px-4 py-1.5 rounded-full">Atau arahkan kamera ke garis barcode</span>}
           </div>
         </div>
       );
     }
 
-    // --- HELPER DATE ---
+    // --- HELPER DATE & TIME ---
     const getMonthYear = (dateString) => {
       try {
         const datePart = dateString.split(/[, ]+/)[0]; 
@@ -209,11 +224,39 @@
       } catch (e) { return yyyymm; }
     };
 
+    const getExactDate = (dateString) => {
+      try {
+        const datePart = dateString.split(/[, ]+/)[0]; 
+        const parts = datePart.split(/[/.-]/); 
+        if (parts.length >= 3) {
+          const year = parts[2].length === 4 ? parts[2] : parts[0];
+          const month = parts[1].padStart(2, '0');
+          const day = parts[2].length === 4 ? parts[0].padStart(2, '0') : parts[2].padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        }
+      } catch (e) {}
+      return '';
+    };
+
+    const formatDateText = (yyyy_mm_dd) => {
+      try {
+        const [year, month, day] = yyyy_mm_dd.split('-');
+        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return `${day} ${months[parseInt(month, 10) - 1]} ${year}`;
+      } catch (e) { return yyyymm; }
+    };
 
     // ==========================================
     // --- KOMPONEN UTAMA APLIKASI (APP) ---
     // ==========================================
     function App() {
+      // --- STATE JAM REALTIME ---
+      const [currentTime, setCurrentTime] = useState(new Date());
+      useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+      }, []);
+
       // --- STATE MODAL & DIALOG GLOBAL ---
       const [dialogConfig, setDialogConfig] = useState(null);
       const showAlert = useCallback((message, title = "Informasi") => setDialogConfig({ type: 'alert', title, message }), []);
@@ -229,8 +272,8 @@
       const [isSupported, setIsSupported] = useState(true);
 
       const [activeTab, setActiveTab] = useState('kasir');
-      const [showScanner, setShowScanner] = useState(false); // Scanner Modal Kasir
-      const [showProductScanner, setShowProductScanner] = useState(false); // Scanner Modal Input Produk
+      const [showScanner, setShowScanner] = useState(false); 
+      const [showProductScanner, setShowProductScanner] = useState(false); 
       
       const [products, setProducts] = useState(() => { const saved = localStorage.getItem('pos_products'); return saved ? JSON.parse(saved) : INITIAL_PRODUCTS; });
       const [salesHistory, setSalesHistory] = useState(() => { const saved = localStorage.getItem('pos_sales'); return saved ? JSON.parse(saved) : []; });
@@ -256,17 +299,27 @@
       const [editingId, setEditingId] = useState(null);
       const [formData, setFormData] = useState({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       
-      // State Kasir/Transaksi
+      // State Kasir/Transaksi (Termasuk Diskon & PPN)
       const [currentReceipt, setCurrentReceipt] = useState(null);
       const [showPaymentModal, setShowPaymentModal] = useState(false);
       const [cashAmount, setCashAmount] = useState('');
       const [paymentMethod, setPaymentMethod] = useState('Tunai');
+      
+      const [cartDiscount, setCartDiscount] = useState(''); // Nominal Diskon (Rp)
+      const [cartTaxRate, setCartTaxRate] = useState('');   // Persentase PPN (%)
 
       // State Pencarian & Filter
-      const [searchTerm, setSearchTerm] = useState(''); // Kasir
-      const [invSearchTerm, setInvSearchTerm] = useState(''); // Inventory
-      const [invStockFilter, setInvStockFilter] = useState('all'); // Inventory 'all' | 'low'
-      const [selectedMonth, setSelectedMonth] = useState('all'); // Rekap
+      const [searchTerm, setSearchTerm] = useState(''); 
+      const [invSearchTerm, setInvSearchTerm] = useState(''); 
+      const [invStockFilter, setInvStockFilter] = useState('all'); 
+      
+      // Filter Rekap
+      const [filterMode, setFilterMode] = useState('all'); // 'all', 'daily', 'monthly'
+      const [selectedMonth, setSelectedMonth] = useState('all'); 
+      const [selectedDate, setSelectedDate] = useState(() => {
+        const today = new Date();
+        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      });
       
       // Referensi Realtime untuk event listener murni DOM
       const productsRef = useRef(products);
@@ -301,16 +354,14 @@
 
       // --- LISTENER KEYBOARD (UNTUK SCANNER BARCODE FISIK / USB) ---
       useEffect(() => {
-        // Abaikan jika tidak di tab kasir, atau kamera scanner sedang terbuka
         if (activeTab !== 'kasir' || showScanner || showProductScanner) return;
         
         const handleKeyDown = (e) => {
-          // Abaikan jika user sedang mengetik manual di input text/textarea/number
           if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
           
           const currentTime = Date.now();
 
-          // Deteksi: Jika pengetikan lambat (> 50ms per karakter), itu diketik manual oleh manusia. Reset buffer.
+          // Deteksi kecepatan ketik (manusia vs scanner)
           if (currentTime - lastKeyTime.current > 50) {
             barcodeBuffer.current = '';
           }
@@ -323,7 +374,6 @@
             barcodeBuffer.current = '';
           } else if (e.key.length === 1) {
             barcodeBuffer.current += e.key;
-            // Clear otomatis jika tidak ada enter dalam 100ms
             clearTimeout(barcodeTimeout.current);
             barcodeTimeout.current = setTimeout(() => { barcodeBuffer.current = ''; }, 100);
           }
@@ -336,7 +386,7 @@
       // --- HANDLER BARCODE KASIR (TRANSAKSI) ---
       const handleBarcodeScannedKasir = (code) => {
         const now = Date.now();
-        if (now - lastScanTime.current < 1500) return; // Debounce 1.5 detik agar tidak ter-scan double
+        if (now - lastScanTime.current < 1500) return; 
         
         const product = productsRef.current.find(p => p.barcode === code);
         if (product) {
@@ -375,7 +425,6 @@
           iframe.style.display = 'none';
           document.body.appendChild(iframe);
 
-          // Format HTML Untuk Print Stiker Label Thermal 50x30mm
           const html = `
             <html><head><title>Print_Barcode_${product.barcode}</title>
               <style>
@@ -396,7 +445,6 @@
           iframe.contentWindow.document.write(html);
           iframe.contentWindow.document.close();
 
-          // Cleanup iframe memory
           setTimeout(() => {
             if (document.body.contains(iframe)) document.body.removeChild(iframe);
           }, 3000);
@@ -429,7 +477,6 @@
           try {
             const importedData = JSON.parse(event.target.result);
             if (importedData.products && importedData.salesHistory && importedData.storeInfo) {
-              // Validasi dan konversi (Backward compatibility untuk HPP)
               const updatedProducts = importedData.products.map(p => ({
                  ...p, hpp: p.hpp !== undefined ? Number(p.hpp) : 0 
               }));
@@ -482,7 +529,6 @@
         } else {
           setProducts([...products, { id: Date.now(), ...finalProduct }]);
         }
-        // Reset form
         setFormData({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       };
 
@@ -502,12 +548,11 @@
       const handleDeleteProduct = (id) => {
         showConfirm('Yakin ingin menghapus produk ini?', () => {
           setProducts(prev => prev.filter(p => p.id !== id));
-          removeFromCart(id); // Hapus juga dari keranjang jika ada
+          removeFromCart(id);
         });
       };
 
       useEffect(() => {
-        // Cek dukungan Web Bluetooth
         if (!navigator.bluetooth) {
           setIsSupported(false);
           setErrorMsg('Browser/Perangkat ini tidak mendukung koneksi Bluetooth langsung.');
@@ -519,10 +564,26 @@
       };
 
       const formatNumberBT = (num) => {
-        return (Number(num) || 0).toLocaleString('id-ID'); // Format angka tanpa Rp untuk Thermal
+        return (Number(num) || 0).toLocaleString('id-ID'); 
       }
 
-      // --- MANAJEMEN KERANJANG TRANSAKSI ---
+      // --- PERINTAH BUKA LACI KASIR (CASH DRAWER RJ11) ---
+      const openCashDrawer = async () => {
+        if (!printerCharacteristic) {
+          showAlert('Printer Bluetooth belum terhubung!', 'Peringatan');
+          return;
+        }
+        try {
+          // Kode standar universal ESC/POS untuk Kick Cash Drawer: ESC p 0 25 250
+          const drawerCmd = new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
+          await printerCharacteristic.writeValue(drawerCmd);
+        } catch (err) {
+          console.error(err);
+          showAlert('Gagal membuka laci: ' + err.message, 'Error');
+        }
+      };
+
+      // --- MANAJEMEN KERANJANG TRANSAKSI & KALKULASI DISKON/PPN ---
       const addToCart = (product) => {
         const currentStock = product.stock !== undefined ? product.stock : 0;
         if (currentStock <= 0) return showAlert('Stok produk habis!', 'Peringatan');
@@ -553,7 +614,7 @@
               return { ...item, quantity: newQuantity };
             }
             return item;
-          }).filter(item => item.quantity > 0) // Otomatis hapus jika quantity = 0
+          }).filter(item => item.quantity > 0)
         );
       };
 
@@ -561,8 +622,23 @@
         setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
       };
 
-      const total = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
-      const changeAmount = Number(cashAmount || 0) - total;
+      const clearCart = () => {
+         showConfirm('Yakin ingin mengosongkan keranjang belanja?', () => setCart([]));
+      };
+
+      // Kalkulasi Utama Kasir
+      const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
+      // Validasi agar diskon tidak error jika input diisi string aneh
+      let discountAmount = parseInt(cartDiscount, 10);
+      if (isNaN(discountAmount) || discountAmount < 0) discountAmount = 0;
+      
+      let taxRateAmount = parseInt(cartTaxRate, 10);
+      if (isNaN(taxRateAmount) || taxRateAmount < 0) taxRateAmount = 0;
+      if (taxRateAmount > 100) taxRateAmount = 100;
+
+      const taxAmount = Math.round((subtotal - discountAmount) * (taxRateAmount / 100));
+      const grandTotal = subtotal - discountAmount + taxAmount;
+      const changeAmount = Number(cashAmount || 0) - grandTotal;
 
       // --- KONEKSI PRINTER THERMAL BLUETOOTH ---
       const connectToPrinter = async () => {
@@ -610,16 +686,14 @@
 
       const sendTextToPrinter = async (characteristic, text) => {
         const encoder = new TextEncoder();
-        const initCmd = new Uint8Array([0x1B, 0x40]); // Reset Printer
+        const initCmd = new Uint8Array([0x1B, 0x40]); 
         await characteristic.writeValue(initCmd);
         const data = encoder.encode(text);
         
-        // Kirim bergelombang agar buffer printer tidak penuh
         for (let i = 0; i < data.length; i += 100) {
           await characteristic.writeValue(data.slice(i, i + 100));
         }
         
-        // Feed kertas 3 baris
         const feedCmd = new Uint8Array([0x0A, 0x0A, 0x0A]);
         await characteristic.writeValue(feedCmd);
       };
@@ -662,8 +736,12 @@
             </table>
             <div class="divider"></div>
             <table>
-              <tr><td class="font-bold" style="font-size:14px;">TOTAL</td><td class="text-right font-bold" style="font-size:14px;">${formatRupiah(currentReceipt.total)}</td></tr>
-              <tr><td class="font-bold" style="font-size:12px;">METODE</td><td class="text-right font-bold" style="font-size:12px; text-transform:uppercase;">${currentReceipt.paymentMethod || 'Tunai'}</td></tr>
+              <tr><td style="font-size:12px;">Subtotal</td><td class="text-right" style="font-size:12px;">${formatRupiah(currentReceipt.subtotal || currentReceipt.total)}</td></tr>
+              ${currentReceipt.discount > 0 ? `<tr><td style="font-size:12px;">Diskon</td><td class="text-right" style="font-size:12px;">-${formatRupiah(currentReceipt.discount)}</td></tr>` : ''}
+              ${currentReceipt.taxAmount > 0 ? `<tr><td style="font-size:12px;">PPN (${currentReceipt.taxRate || 0}%)</td><td class="text-right" style="font-size:12px;">+${formatRupiah(currentReceipt.taxAmount)}</td></tr>` : ''}
+              <tr><td class="font-bold" style="font-size:14px; padding-top:4px;">GRAND TOTAL</td><td class="text-right font-bold" style="font-size:14px; padding-top:4px;">${formatRupiah(currentReceipt.total)}</td></tr>
+              
+              <tr><td class="font-bold" style="font-size:12px; padding-top:8px;">METODE</td><td class="text-right font-bold" style="font-size:12px; text-transform:uppercase; padding-top:8px;">${currentReceipt.paymentMethod || 'Tunai'}</td></tr>
               ${currentReceipt.paymentMethod !== 'Online' ? `
                 <tr><td class="font-bold" style="font-size:12px;">TUNAI</td><td class="text-right" style="font-size:12px;">${formatRupiah(currentReceipt.cash || 0)}</td></tr>
                 <tr><td class="font-bold" style="font-size:12px;">KEMBALI</td><td class="text-right font-bold" style="font-size:12px;">${formatRupiah(currentReceipt.change || 0)}</td></tr>
@@ -694,6 +772,11 @@
         });
       }, [products, invSearchTerm, invStockFilter]);
 
+      // --- HITUNG TOTAL ASET/MODAL KESELURUHAN ---
+      const totalInventoryValue = useMemo(() => {
+        return filteredInventory.reduce((sum, p) => sum + ((p.hpp || 0) * (p.stock || 0)), 0);
+      }, [filteredInventory]);
+
       // --- FILTER LOG PENJUALAN PER BULAN (TAB REKAP) ---
       const availableMonths = useMemo(() => {
         const months = new Set();
@@ -704,13 +787,22 @@
         return Array.from(months).sort().reverse(); 
       }, [salesHistory]);
 
+      // Set default ke bulan terbaru jika mode bulanan dipilih
+      useEffect(() => {
+        if (availableMonths.length > 0 && selectedMonth === 'all' && filterMode === 'monthly') {
+          setSelectedMonth(availableMonths[0]);
+        }
+      }, [availableMonths, filterMode]);
+
       const filteredSales = useMemo(() => {
-        if (selectedMonth === 'all') return salesHistory;
-        return salesHistory.filter(sale => getMonthYear(sale.date) === selectedMonth);
-      }, [salesHistory, selectedMonth]);
+        if (filterMode === 'all') return salesHistory;
+        if (filterMode === 'monthly') return salesHistory.filter(sale => getMonthYear(sale.date) === selectedMonth);
+        if (filterMode === 'daily') return salesHistory.filter(sale => getExactDate(sale.date) === selectedDate);
+        return salesHistory;
+      }, [salesHistory, filterMode, selectedMonth, selectedDate]);
 
       // --- HITUNGAN PROFIT DINAMIS ---
-      const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+      const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0); // total ini adalah GrandTotal di struct
       const totalHpp = filteredSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + ((item.hpp || 0) * item.quantity), 0), 0);
       const totalProfit = totalRevenue - totalHpp;
 
@@ -724,7 +816,11 @@
         document.body.appendChild(iframe);
 
         const printDate = new Date().toLocaleString('id-ID');
-        const periodText = formatMonthYearText(selectedMonth);
+        
+        // Teks periode untuk PDF
+        let periodText = 'Semua Waktu';
+        if (filterMode === 'monthly') periodText = formatMonthYearText(selectedMonth);
+        if (filterMode === 'daily') periodText = formatDateText(selectedDate);
 
         const html = `
           <html><head><title>Rekap_Penjualan_${storeInfo.name}</title>
@@ -757,7 +853,7 @@
                   <th style="width: 20%;">Waktu Transaksi</th>
                   <th style="width: 35%;">Rincian Item</th>
                   <th class="text-right" style="width: 20%;">HPP / Modal</th>
-                  <th class="text-right" style="width: 20%;">Total</th>
+                  <th class="text-right" style="width: 20%;">Grand Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -819,32 +915,55 @@
             receiptText += `${pName}\n`;
             
             const qtyPrice = `${item.quantity} x ${formatNumberBT(item.product.price)}`;
-            const subtotal = `${formatNumberBT(item.quantity * item.product.price)}`;
-            const spaces = Math.max(1, 32 - qtyPrice.length - subtotal.length);
-            receiptText += `${qtyPrice}${' '.repeat(spaces)}${subtotal}\n`;
+            const subtotalItem = `${formatNumberBT(item.quantity * item.product.price)}`;
+            const spaces = Math.max(1, 32 - qtyPrice.length - subtotalItem.length);
+            receiptText += `${qtyPrice}${' '.repeat(spaces)}${subtotalItem}\n`;
           });
           
+          receiptText += "--------------------------------\n";
+          
+          // Print Subtotal
+          const subtotalStr = `${formatNumberBT(saleData.subtotal || saleData.total)}`;
+          const subtotalLabel = "SUBTOTAL:";
+          receiptText += `${subtotalLabel}${' '.repeat(Math.max(1, 32 - subtotalLabel.length - subtotalStr.length))}${subtotalStr}\n`;
+          
+          // Print Diskon (Jika Ada)
+          if (saleData.discount > 0) {
+              const discStr = `-${formatNumberBT(saleData.discount)}`;
+              const discLabel = "DISKON:";
+              receiptText += `${discLabel}${' '.repeat(Math.max(1, 32 - discLabel.length - discStr.length))}${discStr}\n`;
+          }
+
+          // Print PPN (Jika Ada)
+          if (saleData.taxAmount > 0) {
+              const taxStr = `+${formatNumberBT(saleData.taxAmount)}`;
+              const taxLabel = `PPN (${saleData.taxRate || 0}%):`;
+              receiptText += `${taxLabel}${' '.repeat(Math.max(1, 32 - taxLabel.length - taxStr.length))}${taxStr}\n`;
+          }
+
           receiptText += "================================\n";
+
+          // Print Grand Total
           const totalStr = `${formatNumberBT(saleData.total)}`;
-          const totalLabel = "TOTAL:";
+          const totalLabel = "GRAND TOTAL:";
           const totalSpaces = 32 - totalLabel.length - totalStr.length;
-          receiptText += `${totalLabel}${totalSpaces > 0 ? ' '.repeat(totalSpaces) : ' '}${totalStr}\n`;
+          receiptText += `${totalLabel}${' '.repeat(totalSpaces > 0 ? totalSpaces : 1)}${totalStr}\n`;
           
           const methodStr = `${saleData.paymentMethod || 'Tunai'}`.toUpperCase();
           const methodLabel = "METODE:";
           const methodSpaces = 32 - methodLabel.length - methodStr.length;
-          receiptText += `${methodLabel}${methodSpaces > 0 ? ' '.repeat(methodSpaces) : ' '}${methodStr}\n`;
+          receiptText += `${methodLabel}${' '.repeat(methodSpaces > 0 ? methodSpaces : 1)}${methodStr}\n`;
 
           if (saleData.paymentMethod !== 'Online') {
             const cashStr = `${formatNumberBT(saleData.cash || 0)}`;
             const cashLabel = "TUNAI:";
             const cashSpaces = 32 - cashLabel.length - cashStr.length;
-            receiptText += `${cashLabel}${cashSpaces > 0 ? ' '.repeat(cashSpaces) : ' '}${cashStr}\n`;
+            receiptText += `${cashLabel}${' '.repeat(cashSpaces > 0 ? cashSpaces : 1)}${cashStr}\n`;
 
             const changeStr = `${formatNumberBT(saleData.change || 0)}`;
             const changeLabel = "KEMBALI:";
             const changeSpaces = 32 - changeLabel.length - changeStr.length;
-            receiptText += `${changeLabel}${changeSpaces > 0 ? ' '.repeat(changeSpaces) : ' '}${changeStr}\n`;
+            receiptText += `${changeLabel}${' '.repeat(changeSpaces > 0 ? changeSpaces : 1)}${changeStr}\n`;
           }
           
           receiptText += "================================\n";
@@ -860,15 +979,28 @@
       // --- TRANSAKSI ---
       const handlePayment = () => {
         if (cart.length === 0) return showAlert('Keranjang kosong!', 'Peringatan');
+        
+        if (discountAmount > subtotal) {
+           return showAlert('Diskon tidak boleh melebihi Subtotal belanja!', 'Peringatan');
+        }
+
+        // Pastikan tidak ada stok minus sesaat sebelum membuka modal bayar (Double Validation)
+        for (let item of cart) {
+           const p = productsRef.current.find(x => x.id === item.product.id);
+           if (!p || (p.stock !== undefined && item.quantity > p.stock)) {
+               return showAlert(`Stok produk "${item.product.name}" tidak mencukupi untuk transaksi ini!`, 'Peringatan');
+           }
+        }
+
         setCashAmount('');
         setPaymentMethod('Tunai');
         setShowPaymentModal(true);
       };
 
       const processPayment = () => {
-        if (paymentMethod === 'Tunai' && changeAmount < 0) return showAlert('Uang tunai kurang!', 'Peringatan');
+        if (paymentMethod === 'Tunai' && changeAmount < 0) return showAlert('Uang tunai tidak cukup!', 'Peringatan');
         
-        const finalCash = paymentMethod === 'Online' ? total : Number(cashAmount);
+        const finalCash = paymentMethod === 'Online' ? grandTotal : Number(cashAmount);
         const finalChange = paymentMethod === 'Online' ? 0 : changeAmount;
 
         const newSale = { 
@@ -879,7 +1011,11 @@
              quantity: item.quantity,
              hpp: item.product.hpp || 0 
           })), 
-          total, 
+          subtotal: subtotal,
+          discount: discountAmount,
+          taxRate: taxRateAmount,
+          taxAmount: taxAmount,
+          total: grandTotal, 
           cash: finalCash, 
           change: finalChange,
           paymentMethod,
@@ -898,6 +1034,16 @@
 
         setSalesHistory(prev => [newSale, ...prev]);
         setCart([]); 
+        
+        // Buka laci otomatis jika pembayaran tunai dan printer terhubung
+        if (paymentMethod === 'Tunai' && printerCharacteristic) {
+           openCashDrawer();
+        }
+        
+        // Reset Form Diskon/Pajak setelah transaksi berhasil
+        setCartDiscount('');
+        setCartTaxRate('');
+
         setShowPaymentModal(false);
         setCurrentReceipt(newSale); // Tampilkan modal struk
       };
@@ -1033,7 +1179,10 @@
                   <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden shrink-0">
                     {storeInfo.logo ? <img src={storeInfo.logo} className="w-full h-full object-contain p-0.5" /> : <Store size={24} className="text-blue-600" />}
                   </div>
-                  <h1 className="text-xl font-bold tracking-tight truncate max-w-[150px] sm:max-w-none">{storeInfo.name}</h1>
+                  <div>
+                    <h1 className="text-xl font-bold tracking-tight truncate max-w-[150px] sm:max-w-none">{storeInfo.name}</h1>
+                    <div className="text-[10px] text-blue-200 font-medium flex items-center gap-1"><Clock size={10} /> {currentTime.toLocaleString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -1041,11 +1190,18 @@
                     <User size={16} /> <span className="truncate max-w-[100px]">{storeInfo.cashierName || 'Kasir'}</span>
                   </div>
                   {printerDevice ? (
-                    <div className="flex items-center gap-2 bg-green-500/20 text-green-100 px-3 py-1.5 rounded-full text-sm border border-green-400"><CheckCircle2 size={16} /><span>{printerDevice.name || 'Terhubung'}</span></div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={openCashDrawer} className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm transition-colors border border-blue-200" title="Buka Laci Kasir (Cash Drawer)">
+                        <Archive size={16} /><span className="hidden sm:inline">Buka Laci</span>
+                      </button>
+                      <div className="flex items-center gap-2 bg-green-500/20 text-green-100 px-3 py-1.5 rounded-full text-sm border border-green-400">
+                        <CheckCircle2 size={16} /><span>{printerDevice.name || 'Terhubung'}</span>
+                      </div>
+                    </div>
                   ) : (
                     <button onClick={connectToPrinter} disabled={isConnecting || !isSupported} className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm hidden sm:flex"><Printer size={18} />{isConnecting ? 'Menghubungkan...' : 'Hubungkan Printer'}</button>
                   )}
-                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500/20 text-red-100 hover:bg-red-500/30 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border border-red-400" title="Keluar"><LogOut size={16} className="sm:hidden" /><span className="hidden sm:inline">Kunci</span></button>
+                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500/20 text-red-100 hover:bg-red-500/30 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border border-red-400" title="Kunci Kasir"><LogOut size={16} className="sm:hidden" /><span className="hidden sm:inline">Kunci</span></button>
                 </div>
               </div>
             </header>
@@ -1075,14 +1231,17 @@
                             value={searchTerm} 
                             onChange={(e) => setSearchTerm(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleBarcodeScannedKasir(searchTerm);
+                              if (e.key === 'Enter' && searchTerm.trim() !== '') {
+                                handleBarcodeScannedKasir(searchTerm.trim());
                                 setSearchTerm('');
                               }
                             }}
-                            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" 
+                            className="w-full pl-12 pr-10 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" 
                             placeholder="Cari nama produk / kode barcode..."
                           />
+                          {searchTerm && (
+                             <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-red-500"><X size={16} /></button>
+                          )}
                         </div>
                         <button onClick={() => setShowScanner(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-xl shadow-md flex items-center justify-center transition-colors" title="Scan via Kamera HP/Laptop">
                           <Camera size={22} />
@@ -1112,12 +1271,19 @@
                   {/* Keranjang Panel */}
                   <div className="w-full lg:w-[400px] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[500px] lg:h-full shrink-0">
                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                      <h2 className="font-bold text-gray-700 text-lg flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Keranjang</h2>
-                      <span className="bg-blue-600 text-white py-1 px-3 rounded-full text-xs font-black shadow-lg shadow-blue-100">{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-bold text-gray-700 text-lg flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Keranjang</h2>
+                        <span className="bg-blue-600 text-white py-0.5 px-2.5 rounded-full text-[10px] font-black shadow-lg shadow-blue-100">{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                      </div>
+                      {cart.length > 0 && (
+                         <button onClick={clearCart} className="text-xs font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"><Trash2 size={14}/> Kosongkan</button>
+                      )}
                     </div>
+                    
+                    {/* Item List */}
                     <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
                       {cart.length === 0 ? (
-                        <div className="m-auto text-center text-gray-300 flex flex-col items-center"><ShoppingCart size={64} className="mb-4 opacity-10" /><p className="font-bold text-gray-400">Keranjang Kosong</p><p className="text-xs mt-1">Pilih menu di samping</p></div>
+                        <div className="m-auto text-center text-gray-300 flex flex-col items-center"><ShoppingCart size={64} className="mb-4 opacity-10" /><p className="font-bold text-gray-400">Keranjang Kosong</p><p className="text-xs mt-1">Pilih produk di samping atau gunakan scanner</p></div>
                       ) : (
                         cart.map((item) => (
                           <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
@@ -1130,8 +1296,30 @@
                         ))
                       )}
                     </div>
+                    
+                    {/* Total & Input Diskon/PPN */}
                     <div className="p-5 bg-gray-50 border-t border-gray-100 rounded-b-2xl">
-                      <div className="flex justify-between items-center mb-5"><span className="text-gray-500 font-bold">Total</span><span className="text-3xl font-black text-blue-600">{formatRupiah(total)}</span></div>
+                      
+                      <div className="flex justify-between items-center mb-2 text-sm">
+                        <span className="text-gray-500 font-bold">Subtotal</span>
+                        <span className="font-bold text-gray-700">{formatRupiah(subtotal)}</span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center mb-2 text-sm gap-2">
+                         <span className="text-gray-500 font-bold whitespace-nowrap">Diskon (Rp)</span>
+                         <input type="number" min="0" value={cartDiscount} onChange={e => setCartDiscount(e.target.value)} className="w-28 p-1.5 border border-gray-200 rounded-lg text-right font-bold text-gray-700 focus:border-blue-500 outline-none shadow-inner" placeholder="0" />
+                      </div>
+                      
+                      <div className="flex justify-between items-center mb-4 text-sm gap-2">
+                         <span className="text-gray-500 font-bold whitespace-nowrap">PPN (%)</span>
+                         <input type="number" min="0" max="100" value={cartTaxRate} onChange={e => setCartTaxRate(e.target.value)} className="w-16 p-1.5 border border-gray-200 rounded-lg text-right font-bold text-gray-700 focus:border-blue-500 outline-none shadow-inner" placeholder="0" />
+                      </div>
+
+                      <div className="flex justify-between items-center mb-5 border-t border-gray-200 pt-3">
+                        <span className="text-gray-800 font-black">Grand Total</span>
+                        <span className="text-3xl font-black text-blue-600">{formatRupiah(grandTotal)}</span>
+                      </div>
+
                       <button onClick={handlePayment} disabled={cart.length === 0} className={`w-full py-5 rounded-2xl font-black text-white flex justify-center items-center gap-3 shadow-lg transition-all ${cart.length === 0 ? 'bg-gray-300 shadow-none cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}><FileText size={22} /> Bayar Sekarang</button>
                       {!printerDevice && cart.length > 0 && <p className="text-[10px] text-orange-500 text-center mt-4 font-bold tracking-tight"><AlertCircle size={10} className="inline mr-1 mb-0.5" /> Printer Bluetooth belum terhubung</p>}
                     </div>
@@ -1165,13 +1353,13 @@
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode Produk</label>
+                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode Kemasan</label>
                         <div className="flex gap-2">
-                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Isi manual / auto"/>
-                          <button type="button" onClick={() => setShowProductScanner(true)} className="bg-blue-50 text-blue-600 px-4 rounded-xl font-bold hover:bg-blue-100 transition-colors flex items-center justify-center border-2 border-blue-200 shrink-0" title="Scan Barcode Kemasan Asli">
+                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 border-2 border-gray-100 rounded-xl p-3 text-sm font-bold focus:border-blue-500 outline-none w-0" placeholder="Manual / Scan"/>
+                          <button type="button" onClick={() => setShowProductScanner(true)} className="bg-blue-50 text-blue-600 px-4 rounded-xl font-bold hover:bg-blue-100 transition-colors flex items-center justify-center border-2 border-blue-200 shrink-0" title="Scan Kamera / Upload">
                             <Camera size={20} />
                           </button>
-                          <button type="button" onClick={handleGenerateBarcode} className="bg-gray-100 text-gray-600 px-4 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center border-2 border-gray-200 shrink-0" title="Generate Barcode Otomatis">
+                          <button type="button" onClick={handleGenerateBarcode} className="bg-gray-100 text-gray-600 px-4 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center border-2 border-gray-200 shrink-0" title="Generate Otomatis">
                             Auto
                           </button>
                         </div>
@@ -1187,11 +1375,15 @@
                   <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
                     
                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center shrink-0">
-                      <h2 className="font-bold text-gray-700 text-lg flex-shrink-0">Inventory ({filteredInventory.length})</h2>
+                      <div className="flex flex-col">
+                        <h2 className="font-bold text-gray-700 text-lg flex-shrink-0">Inventory ({filteredInventory.length})</h2>
+                        <span className="text-xs font-bold text-indigo-600 mt-1">Total Aset Modal: {formatRupiah(totalInventoryValue)}</span>
+                      </div>
                       <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
                         <div className="relative flex-1 sm:w-48">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search size={14} className="text-gray-400" /></div>
-                          <input type="text" value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none shadow-sm" placeholder="Cari nama/barcode..."/>
+                          <input type="text" value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none shadow-sm" placeholder="Cari nama/barcode..."/>
+                          {invSearchTerm && <button onClick={() => setInvSearchTerm('')} className="absolute inset-y-0 right-0 pr-2 flex items-center text-gray-400 hover:text-red-500"><X size={14} /></button>}
                         </div>
                         <div className="relative flex-1 sm:w-48">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><FilterIcon size={14} className="text-gray-400" /></div>
@@ -1204,11 +1396,12 @@
                     </div>
 
                     <div className="overflow-y-auto p-0 flex-1 block">
-                      <table className="w-full text-left border-collapse min-w-[650px]">
-                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga Jual</th><th className="p-5 border-b border-gray-200 text-gray-500">Modal (HPP)</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
+                      <table className="w-full text-left border-collapse min-w-[700px]">
+                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga Jual</th><th className="p-5 border-b border-gray-200 text-gray-500">Modal (HPP)</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-right text-indigo-400">Total Modal</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
                         <tbody className="text-sm">
                           {filteredInventory.map(product => {
                             const stock = product.stock !== undefined ? product.stock : 0;
+                            const totalModal = (product.hpp || 0) * stock;
                             return (
                               <tr key={product.id} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors">
                                 <td className="p-5 font-bold text-gray-800">
@@ -1219,6 +1412,7 @@
                                 <td className="p-5 font-black text-blue-600">{formatRupiah(product.price)}</td>
                                 <td className="p-5 font-bold text-gray-500 text-xs">{formatRupiah(product.hpp || 0)}</td>
                                 <td className="p-5 text-center"><span className={`px-3 py-1 rounded-lg font-black text-xs border ${stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>{stock}</span></td>
+                                <td className="p-5 text-right font-black text-indigo-600 text-xs">{formatRupiah(totalModal)}</td>
                                 <td className="p-5 flex justify-center gap-1">
                                   {product.barcode && (
                                     <button onClick={() => printBarcodeLabel(product)} className="p-2.5 text-gray-500 hover:bg-gray-200 rounded-xl transition-all" title="Cetak Label Barcode"><Printer size={16}/></button>
@@ -1229,7 +1423,7 @@
                               </tr>
                             );
                           })}
-                          {filteredInventory.length === 0 && <tr><td colSpan="6" className="p-10 text-center text-gray-300 font-bold">Tidak ada data barang yang sesuai filter.</td></tr>}
+                          {filteredInventory.length === 0 && <tr><td colSpan="7" className="p-10 text-center text-gray-300 font-bold">Tidak ada data barang yang sesuai filter.</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -1244,26 +1438,55 @@
                       <h2 className="font-bold text-gray-700 text-lg">Log Penjualan</h2>
                       
                       <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                        {/* FILTER BULAN */}
-                        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm flex-1 md:flex-none">
-                           <Calendar size={18} className="text-gray-400" />
-                           <select 
-                              value={selectedMonth} 
-                              onChange={(e) => setSelectedMonth(e.target.value)} 
-                              className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
-                           >
-                             <option value="all">Semua Waktu</option>
-                             {availableMonths.map(m => (
-                               <option key={m} value={m}>{formatMonthYearText(m)}</option>
-                             ))}
-                           </select>
+                        {/* FILTER REKAP */}
+                        <div className="flex flex-wrap items-center gap-2 flex-1 md:flex-none">
+                           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
+                             <FilterIcon size={18} className="text-gray-400" />
+                             <select 
+                                value={filterMode} 
+                                onChange={(e) => setFilterMode(e.target.value)} 
+                                className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
+                             >
+                               <option value="all">Semua Waktu</option>
+                               <option value="daily">Harian</option>
+                               <option value="monthly">Bulanan</option>
+                             </select>
+                           </div>
+
+                           {filterMode === 'monthly' && (
+                             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
+                                <Calendar size={18} className="text-gray-400" />
+                                <select 
+                                   value={selectedMonth} 
+                                   onChange={(e) => setSelectedMonth(e.target.value)} 
+                                   className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
+                                >
+                                  {availableMonths.length === 0 && <option value="all">Belum ada data</option>}
+                                  {availableMonths.map(m => (
+                                    <option key={m} value={m}>{formatMonthYearText(m)}</option>
+                                  ))}
+                                </select>
+                             </div>
+                           )}
+
+                           {filterMode === 'daily' && (
+                             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
+                                <Calendar size={18} className="text-gray-400" />
+                                <input 
+                                   type="date"
+                                   value={selectedDate} 
+                                   onChange={(e) => setSelectedDate(e.target.value)} 
+                                   className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
+                                />
+                             </div>
+                           )}
                         </div>
 
-                        <div className="text-xs font-black text-blue-700 bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 shadow-sm whitespace-nowrap">PENDAPATAN: <span className="text-sm ml-1">{formatRupiah(totalRevenue)}</span></div>
-                        <div className="text-xs font-black text-green-700 bg-green-50 px-4 py-3 rounded-xl border border-green-100 shadow-sm flex items-center gap-1 whitespace-nowrap"><TrendingUp size={14}/> PROFIT: <span className="text-sm ml-1">{formatRupiah(totalProfit)}</span></div>
+                        <div className="text-xs font-black text-blue-700 bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 shadow-sm whitespace-nowrap mt-2 sm:mt-0">PENDAPATAN: <span className="text-sm ml-1">{formatRupiah(totalRevenue)}</span></div>
+                        <div className="text-xs font-black text-green-700 bg-green-50 px-4 py-3 rounded-xl border border-green-100 shadow-sm flex items-center gap-1 whitespace-nowrap mt-2 sm:mt-0"><TrendingUp size={14}/> PROFIT: <span className="text-sm ml-1">{formatRupiah(totalProfit)}</span></div>
                         
                         {filteredSales.length > 0 && (
-                          <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                          <div className="flex items-center gap-2 w-full md:w-auto justify-end mt-2 md:mt-0">
                             <button onClick={printSalesSummaryAsPDF} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-100 transition-all active:scale-95"><Printer size={16} /> Laporan PDF</button>
                             <button onClick={() => showConfirm('Bersihkan SEMUA riwayat penjualan? Tindakan ini tidak bisa dibatalkan.', () => setSalesHistory([]))} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl border border-red-100 transition-all" title="Reset History"><Trash2 size={18} /></button>
                           </div>
@@ -1273,7 +1496,7 @@
                     
                     <div className="overflow-y-auto p-5 flex flex-col gap-5 flex-1 bg-gray-50/30">
                       {filteredSales.length === 0 ? (
-                        <div className="m-auto text-center text-gray-300 py-16"><ClipboardList size={80} className="mx-auto mb-4 opacity-10" /><p className="font-bold text-gray-400">Belum Ada Transaksi {selectedMonth !== 'all' ? 'di Bulan Ini' : ''}</p></div>
+                        <div className="m-auto text-center text-gray-300 py-16"><ClipboardList size={80} className="mx-auto mb-4 opacity-10" /><p className="font-bold text-gray-400">Belum Ada Transaksi pada Periode Ini</p></div>
                       ) : (
                         filteredSales.map(sale => {
                           const saleHpp = sale.items.reduce((sum, item) => sum + ((item.hpp || 0) * item.quantity), 0);
@@ -1283,11 +1506,11 @@
                                 <div className="flex flex-col"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu & Kasir</span><span className="text-sm text-gray-800 font-bold">{sale.date}</span><span className="text-xs text-gray-500 font-medium mt-0.5"><User size={10} className="inline mr-1 mb-0.5"/>{sale.cashier || 'Kasir'}</span></div>
                                 <div className="flex items-center gap-4 text-right">
                                   <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Bayar</span>
+                                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Grand Total</span>
                                     <span className="font-black text-blue-600 text-xl">{formatRupiah(sale.total)}</span>
                                     <span className="text-[10px] font-bold text-green-500 mt-1">Profit: {formatRupiah(sale.total - saleHpp)}</span>
                                   </div>
-                                  <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-3 rounded-2xl transition-all shadow-inner"><FileText size={20} /></button>
+                                  <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-3 rounded-2xl transition-all shadow-inner" title="Lihat Struk"><FileText size={20} /></button>
                                 </div>
                               </div>
                               <div className="flex flex-wrap gap-2">
@@ -1465,7 +1688,7 @@
                 </div>
                 <div className="p-8 flex flex-col gap-6">
                   <div className="flex justify-between items-center text-lg font-bold bg-blue-50 p-6 rounded-3xl border border-blue-100">
-                    <span className="text-blue-500 text-sm uppercase tracking-widest">Total</span><span className="text-blue-700 text-3xl font-black">{formatRupiah(total)}</span>
+                    <span className="text-blue-500 text-sm uppercase tracking-widest">Total</span><span className="text-blue-700 text-3xl font-black">{formatRupiah(grandTotal)}</span>
                   </div>
 
                   <div className="flex bg-gray-100 p-1.5 rounded-2xl">
@@ -1480,8 +1703,8 @@
                         <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-4 border-gray-50 bg-gray-50 rounded-3xl p-6 text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => setCashAmount(total)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
-                        <button onClick={() => setCashAmount(total > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{total > 50000 ? '100.000' : '50.000'}</button>
+                        <button onClick={() => setCashAmount(grandTotal)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
+                        <button onClick={() => setCashAmount(grandTotal > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{grandTotal > 50000 ? '100.000' : '50.000'}</button>
                       </div>
                       <div className="flex flex-col items-center mt-2 p-6 rounded-3xl bg-gray-900 text-white shadow-xl">
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
@@ -1539,7 +1762,12 @@
                       ))}
                     </div>
                     
-                    <div className="flex justify-between font-black text-sm mb-1"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
+                    {/* REVISI STRUK: Subtotal, Diskon, PPN */}
+                    <div className="flex justify-between font-bold text-gray-500 mb-1"><span>Subtotal</span><span>{formatRupiah(currentReceipt.subtotal || currentReceipt.total)}</span></div>
+                    {currentReceipt.discount > 0 && <div className="flex justify-between font-bold text-gray-500 mb-1"><span>Diskon</span><span>-{formatRupiah(currentReceipt.discount)}</span></div>}
+                    {currentReceipt.taxAmount > 0 && <div className="flex justify-between font-bold text-gray-500 mb-1"><span>PPN ({currentReceipt.taxRate || 0}%)</span><span>+{formatRupiah(currentReceipt.taxAmount)}</span></div>}
+                    
+                    <div className="flex justify-between font-black text-sm mb-1 mt-2 border-t border-dashed border-gray-300 pt-2"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
                     <div className="flex justify-between font-bold text-gray-500 mb-1"><span>METODE</span><span className="uppercase">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
                     {currentReceipt.paymentMethod !== 'Online' && (
                       <React.Fragment>
@@ -1579,7 +1807,13 @@
                   <div key={idx}><div className="font-bold">{item.product.name}</div><div className="flex justify-between"><span>{item.quantity}x {formatNumberBT(item.product.price)}</span><span>{formatNumberBT(item.quantity * item.product.price)}</span></div></div>
                 ))}
               </div>
-              <div className="flex justify-between font-bold text-sm mb-1"><span>TOTAL</span><span>{formatNumberBT(currentReceipt.total)}</span></div>
+              
+              {/* REVISI PRINT WEB: Subtotal, Diskon, PPN */}
+              <div className="flex justify-between text-[8px] mb-1"><span>Subtotal</span><span>{formatNumberBT(currentReceipt.subtotal || currentReceipt.total)}</span></div>
+              {currentReceipt.discount > 0 && <div className="flex justify-between text-[8px] mb-1"><span>Diskon</span><span>-{formatNumberBT(currentReceipt.discount)}</span></div>}
+              {currentReceipt.taxAmount > 0 && <div className="flex justify-between text-[8px] mb-1"><span>PPN ({currentReceipt.taxRate || 0}%)</span><span>+{formatNumberBT(currentReceipt.taxAmount)}</span></div>}
+              
+              <div className="flex justify-between font-bold text-sm mb-1 border-t border-dashed border-black pt-1"><span>GRAND TOTAL</span><span>{formatNumberBT(currentReceipt.total)}</span></div>
               <div className="flex justify-between text-[8px] mb-1"><span>METODE</span><span className="uppercase font-bold">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
               {currentReceipt.paymentMethod !== 'Online' && (
                 <React.Fragment>
@@ -1601,5 +1835,3 @@
   </script>
 </body>
 </html>
-
-
