@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Aplikasi Kasir Pro Ultimate</title>
   
   <!-- Tailwind CSS -->
@@ -18,6 +18,20 @@
   
   <!-- Library untuk Generate Barcode Visual (JsBarcode) -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+  <style>
+    /* Sembunyikan scrollbar untuk navigasi agar mulus di HP */
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Mencegah zoom otomatis pada input iOS/Android */
+    input, select, textarea { font-size: 16px !important; }
+
+    @media print { 
+      @page { margin: 0; size: 58mm auto; } 
+      body { margin: 0; padding: 10px; background: white; } 
+    }
+  </style>
 </head>
 <body class="bg-gray-50 text-gray-800 selection:bg-blue-200">
 
@@ -317,8 +331,8 @@
       const [cashAmount, setCashAmount] = useState('');
       const [paymentMethod, setPaymentMethod] = useState('Tunai');
       
-      const [cartDiscount, setCartDiscount] = useState(''); // Nominal Diskon (Rp)
-      const [cartTaxRate, setCartTaxRate] = useState('');   // Persentase PPN (%)
+      const [cartDiscount, setCartDiscount] = useState(''); 
+      const [cartTaxRate, setCartTaxRate] = useState('');   
 
       // State Pengaturan Printer
       const [printerSettings, setPrinterSettings] = useState(() => {
@@ -332,7 +346,7 @@
       const [invStockFilter, setInvStockFilter] = useState('all'); 
       
       // Filter Rekap
-      const [filterMode, setFilterMode] = useState('all'); // 'all', 'daily', 'monthly'
+      const [filterMode, setFilterMode] = useState('all'); 
       const [selectedMonth, setSelectedMonth] = useState('all'); 
       const [selectedDate, setSelectedDate] = useState(() => {
         const today = new Date();
@@ -415,6 +429,140 @@
           lastScanTime.current = now; 
           showAlert(`Barcode ${code} tidak ditemukan di database!`, 'Peringatan');
         }
+      };
+
+      // --- FILTER INVENTORY (TAB PRODUK) ---
+      const filteredInventory = useMemo(() => {
+        return products.filter(p => {
+          const matchSearch = p.name.toLowerCase().includes(invSearchTerm.toLowerCase()) || (p.barcode && p.barcode.includes(invSearchTerm));
+          const matchStock = invStockFilter === 'low' ? (p.stock !== undefined ? p.stock : 0) <= 5 : true;
+          return matchSearch && matchStock;
+        });
+      }, [products, invSearchTerm, invStockFilter]);
+
+      // --- HITUNG TOTAL ASET/MODAL KESELURUHAN ---
+      const totalInventoryValue = useMemo(() => {
+        return filteredInventory.reduce((sum, p) => sum + ((p.hpp || 0) * (p.stock || 0)), 0);
+      }, [filteredInventory]);
+
+      // --- FILTER LOG PENJUALAN PER BULAN (TAB REKAP) ---
+      const availableMonths = useMemo(() => {
+        const months = new Set();
+        salesHistory.forEach(sale => {
+          const m = getMonthYear(sale.date);
+          if(m !== 'Lainnya') months.add(m);
+        });
+        return Array.from(months).sort().reverse(); 
+      }, [salesHistory]);
+
+      // Set default ke bulan terbaru jika mode bulanan dipilih
+      useEffect(() => {
+        if (availableMonths.length > 0 && selectedMonth === 'all' && filterMode === 'monthly') {
+          setSelectedMonth(availableMonths[0]);
+        }
+      }, [availableMonths, filterMode]);
+
+      const filteredSales = useMemo(() => {
+        if (filterMode === 'all') return salesHistory;
+        if (filterMode === 'monthly') return salesHistory.filter(sale => getMonthYear(sale.date) === selectedMonth);
+        if (filterMode === 'daily') return salesHistory.filter(sale => getExactDate(sale.date) === selectedDate);
+        return salesHistory;
+      }, [salesHistory, filterMode, selectedMonth, selectedDate]);
+
+      // --- HITUNGAN PROFIT DINAMIS ---
+      const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0); // total ini adalah GrandTotal di struct
+      const totalHpp = filteredSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + ((item.hpp || 0) * item.quantity), 0), 0);
+      const totalProfit = totalRevenue - totalHpp;
+
+
+      // --- PRINT REKAP PENJUALAN (PDF) ---
+      const printSalesSummaryAsPDF = () => {
+        if (filteredSales.length === 0) return showAlert('Tidak ada data rekap pada periode ini.', 'Peringatan');
+        
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        const printDate = new Date().toLocaleString('id-ID');
+        
+        // Teks periode untuk PDF
+        let periodText = 'Semua Waktu';
+        if (filterMode === 'monthly') periodText = formatMonthYearText(selectedMonth);
+        if (filterMode === 'daily') periodText = formatDateText(selectedDate);
+
+        const html = `
+          <html><head><title>Rekap_Penjualan_${storeInfo.name}</title>
+            <style>
+              @page { margin: 20mm; size: A4 portrait; }
+              body { font-family: sans-serif; color: #333; font-size: 14px; line-height: 1.5; }
+              .text-center { text-align: center; } .text-right { text-align: right; } .font-bold { font-weight: bold; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
+              th { background-color: #f8f9fa; }
+              .header { margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+              .item-list { font-size: 12px; color: #555; }
+              .summary-logo { max-height: 30px; margin-right: 10px; vertical-align: middle; }
+            </style>
+          </head><body>
+            <div class="header">
+              <h1 class="text-center" style="margin:0 0 5px 0;">
+                ${storeInfo.logo ? `<img src="${storeInfo.logo}" class="summary-logo" />` : ''}
+                ${storeInfo.name}
+              </h1>
+              <p class="text-center" style="margin:0; color:#555;">${storeInfo.address}</p>
+              <h2 class="text-center" style="margin:15px 0 5px 0; font-size: 18px;">Laporan Rekap Penjualan & Profit</h2>
+              <p class="text-center font-bold" style="margin:0; font-size:14px; color:#2563eb;">Periode: ${periodText}</p>
+              <p class="text-center" style="margin:5px 0 0 0; font-size:10px; color:#777;">Dicetak pada: ${printDate}</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 5%;">No</th>
+                  <th style="width: 20%;">Waktu Transaksi</th>
+                  <th style="width: 35%;">Rincian Item</th>
+                  <th class="text-right" style="width: 20%;">HPP / Modal</th>
+                  <th class="text-right" style="width: 20%;">Grand Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredSales.map((sale, index) => {
+                  const saleHpp = sale.items.reduce((sum, item) => sum + ((item.hpp || 0) * item.quantity), 0);
+                  return `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td>${sale.date}</td>
+                      <td class="item-list">
+                        ${sale.items.map(item => `${item.quantity}x ${item.product.name}`).join('<br>')}
+                      </td>
+                      <td class="text-right" style="color: #666;">${formatRupiah(saleHpp)}</td>
+                      <td class="text-right font-bold">${formatRupiah(sale.total)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" class="text-right font-bold" style="font-size: 14px;">TOTAL KESELURUHAN</td>
+                  <td class="text-right font-bold" style="font-size: 14px; color: #666;">${formatRupiah(totalHpp)}</td>
+                  <td class="text-right font-bold" style="font-size: 14px; color: #16a34a;">${formatRupiah(totalRevenue)}</td>
+                </tr>
+                <tr>
+                  <td colspan="4" class="text-right font-bold" style="font-size: 16px;">KEUNTUNGAN BERSIH</td>
+                  <td class="text-right font-bold" style="font-size: 16px; color: #2563eb; background-color: #eff6ff;">${formatRupiah(totalProfit)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </body></html>
+        `;
+
+        iframe.contentWindow.document.open();
+        iframe.contentWindow.document.write(html);
+        iframe.contentWindow.document.close();
+
+        setTimeout(() => {
+          try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { window.print(); }
+          setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1000);
+        }, 500);
       };
 
       // --- GENERATE AUTO BARCODE PRODUK BARU ---
@@ -600,7 +748,7 @@
           return;
         }
         try {
-          // Kode standar universal ESC/POS untuk Kick Cash Drawer: ESC p 0 25 250
+          // Kode standar universal ESC/POS untuk Kick Cash Drawer
           const drawerCmd = new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
           await printerCharacteristic.writeValue(drawerCmd);
         } catch (err) {
@@ -652,10 +800,9 @@
          showConfirm('Yakin ingin mengosongkan keranjang belanja?', () => setCart([]));
       };
 
-      // Kalkulasi Utama Kasir (Menghitung Subtotal Secara Dinamis Berdasarkan Harga Grosir)
+      // Kalkulasi Utama Kasir
       const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (getAppliedPrice(item.product, item.quantity) * item.quantity), 0), [cart]);
       
-      // Validasi agar diskon tidak error jika input diisi string aneh
       let discountAmount = parseInt(cartDiscount, 10);
       if (isNaN(discountAmount) || discountAmount < 0) discountAmount = 0;
       
@@ -790,140 +937,6 @@
         }, 500);
       };
 
-      // --- FILTER INVENTORY (TAB PRODUK) ---
-      const filteredInventory = useMemo(() => {
-        return products.filter(p => {
-          const matchSearch = p.name.toLowerCase().includes(invSearchTerm.toLowerCase()) || (p.barcode && p.barcode.includes(invSearchTerm));
-          const matchStock = invStockFilter === 'low' ? (p.stock !== undefined ? p.stock : 0) <= 5 : true;
-          return matchSearch && matchStock;
-        });
-      }, [products, invSearchTerm, invStockFilter]);
-
-      // --- HITUNG TOTAL ASET/MODAL KESELURUHAN ---
-      const totalInventoryValue = useMemo(() => {
-        return filteredInventory.reduce((sum, p) => sum + ((p.hpp || 0) * (p.stock || 0)), 0);
-      }, [filteredInventory]);
-
-      // --- FILTER LOG PENJUALAN PER BULAN (TAB REKAP) ---
-      const availableMonths = useMemo(() => {
-        const months = new Set();
-        salesHistory.forEach(sale => {
-          const m = getMonthYear(sale.date);
-          if(m !== 'Lainnya') months.add(m);
-        });
-        return Array.from(months).sort().reverse(); 
-      }, [salesHistory]);
-
-      // Set default ke bulan terbaru jika mode bulanan dipilih
-      useEffect(() => {
-        if (availableMonths.length > 0 && selectedMonth === 'all' && filterMode === 'monthly') {
-          setSelectedMonth(availableMonths[0]);
-        }
-      }, [availableMonths, filterMode]);
-
-      const filteredSales = useMemo(() => {
-        if (filterMode === 'all') return salesHistory;
-        if (filterMode === 'monthly') return salesHistory.filter(sale => getMonthYear(sale.date) === selectedMonth);
-        if (filterMode === 'daily') return salesHistory.filter(sale => getExactDate(sale.date) === selectedDate);
-        return salesHistory;
-      }, [salesHistory, filterMode, selectedMonth, selectedDate]);
-
-      // --- HITUNGAN PROFIT DINAMIS ---
-      const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0); // total ini adalah GrandTotal di struct
-      const totalHpp = filteredSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + ((item.hpp || 0) * item.quantity), 0), 0);
-      const totalProfit = totalRevenue - totalHpp;
-
-
-      // --- PRINT REKAP PENJUALAN (PDF) ---
-      const printSalesSummaryAsPDF = () => {
-        if (filteredSales.length === 0) return showAlert('Tidak ada data rekap pada periode ini.', 'Peringatan');
-        
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-
-        const printDate = new Date().toLocaleString('id-ID');
-        
-        // Teks periode untuk PDF
-        let periodText = 'Semua Waktu';
-        if (filterMode === 'monthly') periodText = formatMonthYearText(selectedMonth);
-        if (filterMode === 'daily') periodText = formatDateText(selectedDate);
-
-        const html = `
-          <html><head><title>Rekap_Penjualan_${storeInfo.name}</title>
-            <style>
-              @page { margin: 20mm; size: A4 portrait; }
-              body { font-family: sans-serif; color: #333; font-size: 14px; line-height: 1.5; }
-              .text-center { text-align: center; } .text-right { text-align: right; } .font-bold { font-weight: bold; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
-              th { background-color: #f8f9fa; }
-              .header { margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-              .item-list { font-size: 12px; color: #555; }
-              .summary-logo { max-height: 30px; margin-right: 10px; vertical-align: middle; }
-            </style>
-          </head><body>
-            <div class="header">
-              <h1 class="text-center" style="margin:0 0 5px 0;">
-                ${storeInfo.logo ? `<img src="${storeInfo.logo}" class="summary-logo" />` : ''}
-                ${storeInfo.name}
-              </h1>
-              <p class="text-center" style="margin:0; color:#555;">${storeInfo.address}</p>
-              <h2 class="text-center" style="margin:15px 0 5px 0; font-size: 18px;">Laporan Rekap Penjualan & Profit</h2>
-              <p class="text-center font-bold" style="margin:0; font-size:14px; color:#2563eb;">Periode: ${periodText}</p>
-              <p class="text-center" style="margin:5px 0 0 0; font-size:10px; color:#777;">Dicetak pada: ${printDate}</p>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 5%;">No</th>
-                  <th style="width: 20%;">Waktu Transaksi</th>
-                  <th style="width: 35%;">Rincian Item</th>
-                  <th class="text-right" style="width: 20%;">HPP / Modal</th>
-                  <th class="text-right" style="width: 20%;">Grand Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${filteredSales.map((sale, index) => {
-                  const saleHpp = sale.items.reduce((sum, item) => sum + ((item.hpp || 0) * item.quantity), 0);
-                  return `
-                    <tr>
-                      <td>${index + 1}</td>
-                      <td>${sale.date}</td>
-                      <td class="item-list">
-                        ${sale.items.map(item => `${item.quantity}x ${item.product.name}`).join('<br>')}
-                      </td>
-                      <td class="text-right" style="color: #666;">${formatRupiah(saleHpp)}</td>
-                      <td class="text-right font-bold">${formatRupiah(sale.total)}</td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="3" class="text-right font-bold" style="font-size: 14px;">TOTAL KESELURUHAN</td>
-                  <td class="text-right font-bold" style="font-size: 14px; color: #666;">${formatRupiah(totalHpp)}</td>
-                  <td class="text-right font-bold" style="font-size: 14px; color: #16a34a;">${formatRupiah(totalRevenue)}</td>
-                </tr>
-                <tr>
-                  <td colspan="4" class="text-right font-bold" style="font-size: 16px;">KEUNTUNGAN BERSIH</td>
-                  <td class="text-right font-bold" style="font-size: 16px; color: #2563eb; background-color: #eff6ff;">${formatRupiah(totalProfit)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </body></html>
-        `;
-
-        iframe.contentWindow.document.open();
-        iframe.contentWindow.document.write(html);
-        iframe.contentWindow.document.close();
-
-        setTimeout(() => {
-          try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { window.print(); }
-          setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1000);
-        }, 500);
-      };
-
       // --- PRINT STRUK KE BLUETOOTH THERMAL ---
       const printBluetooth = async (saleData) => {
         if (!printerCharacteristic) return showAlert('Printer Bluetooth belum terhubung!', 'Peringatan');
@@ -955,14 +968,14 @@
           const subtotalLabel = "SUBTOTAL:";
           receiptText += `${subtotalLabel}${' '.repeat(Math.max(1, paperWidth - subtotalLabel.length - subtotalStr.length))}${subtotalStr}\n`;
           
-          // Print Diskon (Jika Ada)
+          // Print Diskon
           if (saleData.discount > 0) {
               const discStr = `-${formatNumberBT(saleData.discount)}`;
               const discLabel = "DISKON:";
               receiptText += `${discLabel}${' '.repeat(Math.max(1, paperWidth - discLabel.length - discStr.length))}${discStr}\n`;
           }
 
-          // Print PPN (Jika Ada)
+          // Print PPN
           if (saleData.taxAmount > 0) {
               const taxStr = `+${formatNumberBT(saleData.taxAmount)}`;
               const taxLabel = `PPN (${saleData.taxRate || 0}%):`;
@@ -1013,7 +1026,6 @@
            return showAlert('Diskon tidak boleh melebihi Subtotal belanja!', 'Peringatan');
         }
 
-        // Pastikan tidak ada stok minus sesaat sebelum membuka modal bayar (Double Validation)
         for (let item of cart) {
            const p = productsRef.current.find(x => x.id === item.product.id);
            if (!p || (p.stock !== undefined && item.quantity > p.stock)) {
@@ -1052,7 +1064,6 @@
           cashier: storeInfo.cashierName || 'Kasir'
         };
         
-        // Kurangi stok
         setProducts(prevProducts => prevProducts.map(p => {
           const cartItem = cart.find(c => c.product.id === p.id);
           if (cartItem) {
@@ -1065,22 +1076,19 @@
         setSalesHistory(prev => [newSale, ...prev]);
         setCart([]); 
         
-        // Buka laci otomatis jika pembayaran tunai dan printer terhubung
         if (paymentMethod === 'Tunai' && printerCharacteristic) {
            openCashDrawer();
         }
 
-        // Auto Print Bluetooth jika diaktifkan
         if (printerSettings.autoPrint && printerCharacteristic) {
            printBluetooth(newSale);
         }
         
-        // Reset Form Diskon/Pajak setelah transaksi berhasil
         setCartDiscount('');
         setCartTaxRate('');
 
         setShowPaymentModal(false);
-        setCurrentReceipt(newSale); // Tampilkan modal struk
+        setCurrentReceipt(newSale); 
       };
 
       // --- AUTENTIKASI PIN & PENGATURAN KATEGORI ---
@@ -1204,63 +1212,75 @@
 
       return (
         <React.Fragment>
-          {/* CSS Print Khusus Web */}
-          <style>{`@media print { @page { margin: 0; size: 58mm auto; } body { margin: 0; padding: 10px; background: white; } }`}</style>
           
           <div className="min-h-screen bg-gray-50 flex flex-col font-sans print:hidden">
-            <header className="bg-blue-600 text-white p-4 shadow-md z-10">
+            {/* --- HEADER --- */}
+            <header className="bg-blue-600 text-white p-3 sm:p-4 shadow-md z-10 sticky top-0">
               <div className="max-w-7xl mx-auto flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden shrink-0">
-                    {storeInfo.logo ? <img src={storeInfo.logo} className="w-full h-full object-contain p-0.5" /> : <Store size={24} className="text-blue-600" />}
+                
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                    {storeInfo.logo ? <img src={storeInfo.logo} className="w-full h-full object-contain p-0.5" /> : <Store size={20} className="text-blue-600" />}
                   </div>
-                  <div>
-                    <h1 className="text-xl font-bold tracking-tight truncate max-w-[150px] sm:max-w-none">{storeInfo.name}</h1>
-                    <div className="text-[10px] text-blue-200 font-medium flex items-center gap-1"><Clock size={10} /> {currentTime.toLocaleString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                  <div className="flex flex-col">
+                    <h1 className="text-base sm:text-xl font-bold tracking-tight truncate max-w-[100px] sm:max-w-[200px] lg:max-w-none">{storeInfo.name}</h1>
+                    <div className="text-[9px] sm:text-[10px] text-blue-200 font-medium flex items-center gap-1">
+                      <Clock size={10} /> 
+                      <span className="hidden sm:inline">{currentTime.toLocaleString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      <span className="sm:hidden">{currentTime.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="hidden md:flex items-center gap-2 bg-blue-700/50 px-3 py-1.5 rounded-lg text-sm font-bold border border-blue-500">
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <div className="hidden lg:flex items-center gap-2 bg-blue-700/50 px-3 py-1.5 rounded-lg text-sm font-bold border border-blue-500">
                     <User size={16} /> <span className="truncate max-w-[100px]">{storeInfo.cashierName || 'Kasir'}</span>
                   </div>
                   {printerDevice ? (
-                    <div className="flex items-center gap-2">
-                      <button onClick={openCashDrawer} className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm transition-colors border border-blue-200" title="Buka Laci Kasir (Cash Drawer)">
-                        <Archive size={16} /><span className="hidden sm:inline">Buka Laci</span>
+                    <div className="flex items-center gap-1 sm:gap-2">
+                      <button onClick={openCashDrawer} className="flex items-center gap-1 sm:gap-2 bg-white text-blue-600 hover:bg-blue-50 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold shadow-sm transition-colors border border-blue-200" title="Buka Laci">
+                        <Archive size={14} /><span className="hidden sm:inline">Buka Laci</span>
                       </button>
-                      <div className="flex items-center gap-2 bg-green-500/20 text-green-100 px-3 py-1.5 rounded-full text-sm border border-green-400">
-                        <CheckCircle2 size={16} /><span>{printerDevice.name || 'Terhubung'}</span>
+                      <div className="flex items-center gap-1 sm:gap-2 bg-green-500/20 text-green-100 px-2 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm border border-green-400">
+                        <CheckCircle2 size={14} /><span className="hidden sm:inline">{printerDevice.name || 'Terhubung'}</span>
                       </div>
                     </div>
                   ) : (
-                    <button onClick={connectToPrinter} disabled={isConnecting || !isSupported} className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm hidden sm:flex"><Printer size={18} />{isConnecting ? 'Menghubungkan...' : 'Hubungkan Printer'}</button>
+                    <button onClick={connectToPrinter} disabled={isConnecting || !isSupported} className="flex items-center gap-1 sm:gap-2 bg-white text-blue-600 hover:bg-blue-50 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold shadow-sm transition-colors disabled:opacity-50">
+                      <Printer size={14} className="sm:w-[18px] sm:h-[18px]" />
+                      <span className="hidden sm:inline">{isConnecting ? 'Menghubungkan...' : 'Hubungkan Printer'}</span>
+                    </button>
                   )}
-                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-500/20 text-red-100 hover:bg-red-500/30 px-3 py-2 rounded-lg text-sm font-semibold transition-colors border border-red-400" title="Kunci Kasir"><LogOut size={16} className="sm:hidden" /><span className="hidden sm:inline">Kunci</span></button>
+                  <button onClick={handleLogout} className="flex items-center gap-1 sm:gap-2 bg-red-500/20 text-red-100 hover:bg-red-500/30 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors border border-red-400" title="Kunci Kasir">
+                    <LogOut size={14} className="sm:w-[16px] sm:h-[16px]" />
+                    <span className="hidden sm:inline">Kunci</span>
+                  </button>
                 </div>
               </div>
             </header>
 
-            <nav className="bg-white border-b border-gray-200 px-4 flex gap-6 overflow-x-auto shadow-sm">
-              <button onClick={() => setActiveTab('kasir')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'kasir' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><LayoutDashboard size={18} /> Menu Kasir</button>
-              <button onClick={() => setActiveTab('produk')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'produk' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><PackageSearch size={18} /> Kelola Produk</button>
-              <button onClick={() => setActiveTab('rekap')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'rekap' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><ClipboardList size={18} /> Rekap Penjualan</button>
-              <button onClick={() => setActiveTab('pengaturan')} className={`py-4 px-2 font-bold text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'pengaturan' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Settings size={18} /> Pengaturan Toko</button>
+            {/* --- NAVIGATION TABS --- */}
+            <nav className="bg-white border-b border-gray-200 px-2 sm:px-4 flex gap-2 sm:gap-6 overflow-x-auto shadow-sm hide-scrollbar pb-1 pt-1">
+              <button onClick={() => setActiveTab('kasir')} className={`py-3 px-3 font-bold text-xs sm:text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'kasir' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><LayoutDashboard size={18} /> Kasir</button>
+              <button onClick={() => setActiveTab('produk')} className={`py-3 px-3 font-bold text-xs sm:text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'produk' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><PackageSearch size={18} /> Produk</button>
+              <button onClick={() => setActiveTab('rekap')} className={`py-3 px-3 font-bold text-xs sm:text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'rekap' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><ClipboardList size={18} /> Laporan</button>
+              <button onClick={() => setActiveTab('pengaturan')} className={`py-3 px-3 font-bold text-xs sm:text-sm flex items-center gap-2 border-b-4 whitespace-nowrap transition-all ${activeTab === 'pengaturan' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Settings size={18} /> Pengaturan</button>
             </nav>
 
-            {errorMsg && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 m-4 max-w-7xl mx-auto rounded shadow-sm flex items-start gap-3 w-full animate-pulse"><AlertCircle size={20} className="mt-0.5 flex-shrink-0" /><p className="text-sm font-bold">{errorMsg}</p></div>}
+            {errorMsg && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 sm:p-4 m-2 sm:m-4 max-w-7xl mx-auto rounded shadow-sm flex items-start gap-3 w-[calc(100%-16px)] sm:w-full animate-pulse"><AlertCircle size={20} className="mt-0.5 flex-shrink-0" /><p className="text-xs sm:text-sm font-bold">{errorMsg}</p></div>}
 
-            <main className="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col lg:flex-row gap-6 overflow-y-auto lg:h-[calc(100vh-140px)]">
+            {/* --- MAIN CONTENT AREA --- */}
+            <main className="flex-1 max-w-7xl mx-auto w-full p-2 sm:p-4 flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-y-auto lg:h-[calc(100vh-140px)]">
               
               {/* TAB: KASIR */}
               {activeTab === 'kasir' && (
                 <React.Fragment>
-                  <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px] lg:min-h-0">
-                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
+                  <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px] lg:min-h-0 relative">
+                    <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-3 sm:gap-4">
                       <h2 className="font-bold text-gray-700 text-lg">Katalog Produk</h2>
                       <div className="flex gap-2">
                         <div className="relative flex-1">
-                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search size={18} className="text-gray-400" /></div>
+                          <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none"><Search size={18} className="text-gray-400" /></div>
                           <input 
                             type="text" 
                             value={searchTerm} 
@@ -1271,31 +1291,31 @@
                                 setSearchTerm('');
                               }
                             }}
-                            className="w-full pl-12 pr-10 py-3 bg-white border-2 border-gray-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" 
-                            placeholder="Cari nama produk / kode barcode..."
+                            className="w-full pl-10 sm:pl-12 pr-10 py-2.5 sm:py-3 bg-white border-2 border-gray-100 rounded-xl text-xs sm:text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" 
+                            placeholder="Cari produk / barcode..."
                           />
                           {searchTerm && (
-                             <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-red-500"><X size={16} /></button>
+                             <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-red-500"><X size={16} /></button>
                           )}
                         </div>
-                        <button onClick={() => setShowScanner(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-xl shadow-md flex items-center justify-center transition-colors" title="Scan via Kamera HP/Laptop">
-                          <Camera size={22} />
+                        <button onClick={() => setShowScanner(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-5 rounded-xl shadow-md flex items-center justify-center transition-colors">
+                          <Camera size={20} className="sm:w-[22px] sm:h-[22px]" />
                         </button>
                       </div>
                     </div>
-                    <div className="p-5 overflow-y-auto">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
+                    <div className="p-4 sm:p-5 overflow-y-auto pb-24 lg:pb-5">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-5">
                         {products
                           .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || (p.barcode && p.barcode.includes(searchTerm)))
                           .map((product) => {
                           const stock = product.stock !== undefined ? product.stock : 0;
                           const isOutOfStock = stock <= 0;
                           return (
-                            <button key={product.id} onClick={() => !isOutOfStock && addToCart(product)} disabled={isOutOfStock} className={`flex flex-col items-center p-5 border-2 rounded-2xl transition-all group text-left w-full focus:outline-none focus:ring-4 focus:ring-blue-100 relative ${isOutOfStock ? 'opacity-40 cursor-not-allowed bg-gray-100 border-gray-200' : 'hover:border-blue-500 hover:bg-blue-50/30 border-gray-100 shadow-sm'}`}>
-                              <div className={`absolute top-2 right-2 text-[10px] font-black px-2 py-0.5 rounded-full border ${stock <= 5 ? 'bg-red-500 text-white border-red-600' : 'bg-green-100 text-green-700 border-green-200'}`}>Stok: {stock}</div>
-                              <div className={`p-4 rounded-2xl mb-4 transition-all shadow-inner ${isOutOfStock ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white group-hover:rotate-6'}`}>{getCategoryIcon(product.category)}</div>
-                              <span className="font-bold text-gray-900 text-sm mb-1 text-center line-clamp-2 leading-tight">{product.name}</span>
-                              <span className="text-blue-600 font-black text-sm">{formatRupiah(product.price)}</span>
+                            <button key={product.id} onClick={() => !isOutOfStock && addToCart(product)} disabled={isOutOfStock} className={`flex flex-col items-center p-3 sm:p-5 border-2 rounded-2xl transition-all group text-left w-full focus:outline-none focus:ring-4 focus:ring-blue-100 relative ${isOutOfStock ? 'opacity-40 cursor-not-allowed bg-gray-100 border-gray-200' : 'hover:border-blue-500 hover:bg-blue-50/30 border-gray-100 shadow-sm'}`}>
+                              <div className={`absolute top-2 right-2 text-[9px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 rounded-full border ${stock <= 5 ? 'bg-red-500 text-white border-red-600' : 'bg-green-100 text-green-700 border-green-200'}`}>Stok: {stock}</div>
+                              <div className={`p-3 sm:p-4 rounded-2xl mb-2 sm:mb-4 transition-all shadow-inner ${isOutOfStock ? 'bg-gray-200 text-gray-400' : 'bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white group-hover:rotate-6'}`}>{getCategoryIcon(product.category)}</div>
+                              <span className="font-bold text-gray-900 text-xs sm:text-sm mb-1 text-center line-clamp-2 leading-tight">{product.name}</span>
+                              <span className="text-blue-600 font-black text-xs sm:text-sm">{formatRupiah(product.price)}</span>
                             </button>
                           );
                         })}
@@ -1304,8 +1324,8 @@
                   </div>
 
                   {/* Keranjang Panel */}
-                  <div className="w-full lg:w-[450px] xl:w-[500px] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[500px] lg:h-full shrink-0">
-                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                  <div id="cart-panel" className="w-full lg:w-[400px] xl:w-[450px] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-auto max-h-[80vh] lg:h-full lg:max-h-none shrink-0 scroll-mt-20">
+                    <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                       <div className="flex items-center gap-2">
                         <h2 className="font-bold text-gray-700 text-lg flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Keranjang</h2>
                         <span className="bg-blue-600 text-white py-0.5 px-2.5 rounded-full text-[10px] font-black shadow-lg shadow-blue-100">{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
@@ -1316,25 +1336,29 @@
                     </div>
                     
                     {/* Item List */}
-                    <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3 sm:gap-4">
                       {cart.length === 0 ? (
-                        <div className="m-auto text-center text-gray-300 flex flex-col items-center"><ShoppingCart size={64} className="mb-4 opacity-10" /><p className="font-bold text-gray-400">Keranjang Kosong</p><p className="text-xs mt-1">Pilih produk di samping atau gunakan scanner</p></div>
+                        <div className="m-auto text-center text-gray-300 flex flex-col items-center"><ShoppingCart size={50} className="mb-4 opacity-10 sm:w-[64px] sm:h-[64px]" /><p className="font-bold text-gray-400 text-sm">Keranjang Kosong</p><p className="text-xs mt-1">Pilih produk atau scan barcode</p></div>
                       ) : (
                         cart.map((item) => {
                           const appliedPrice = getAppliedPrice(item.product, item.quantity);
                           const isGrosir = isWholesaleApplied(item.product, item.quantity);
                           return (
-                            <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
-                              <div className="flex-1 pr-3">
-                                <h4 className="font-bold text-gray-800 text-sm leading-tight mb-1">{item.product.name}</h4>
-                                <p className="text-gray-500 text-xs font-medium flex items-center gap-2">
+                            <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-3 sm:p-4 rounded-xl border border-gray-100">
+                              <div className="flex-1 pr-2 sm:pr-3">
+                                <h4 className="font-bold text-gray-800 text-xs sm:text-sm leading-tight mb-1">{item.product.name}</h4>
+                                <p className="text-gray-500 text-[10px] sm:text-xs font-medium flex items-center gap-2">
                                   {formatRupiah(appliedPrice)}
-                                  {isGrosir && <span className="bg-green-100 text-green-700 text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">Grosir</span>}
+                                  {isGrosir && <span className="bg-green-100 text-green-700 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">Grosir</span>}
                                 </p>
                               </div>
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"><button onClick={() => updateQuantity(item.product.id, -1)} className="p-2.5 hover:bg-red-50 hover:text-red-600 text-gray-500 transition-colors"><Minus size={16} /></button><span className="w-10 text-center text-base font-black text-gray-700">{item.quantity}</span><button onClick={() => updateQuantity(item.product.id, 1)} className="p-2.5 hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors"><Plus size={16} /></button></div>
-                                <button onClick={() => removeFromCart(item.product.id)} className="p-2.5 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={20} /></button>
+                              <div className="flex items-center gap-2 sm:gap-3">
+                                <div className="flex items-center bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                  <button onClick={() => updateQuantity(item.product.id, -1)} className="p-2 sm:p-2.5 hover:bg-red-50 hover:text-red-600 text-gray-500 transition-colors"><Minus size={14} className="sm:w-[16px] sm:h-[16px]" /></button>
+                                  <span className="w-6 sm:w-8 text-center text-sm sm:text-base font-black text-gray-700">{item.quantity}</span>
+                                  <button onClick={() => updateQuantity(item.product.id, 1)} className="p-2 sm:p-2.5 hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors"><Plus size={14} className="sm:w-[16px] sm:h-[16px]" /></button>
+                                </div>
+                                <button onClick={() => removeFromCart(item.product.id)} className="p-2 sm:p-2.5 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={16} className="sm:w-[20px] sm:h-[20px]" /></button>
                               </div>
                             </div>
                           );
@@ -1343,79 +1367,90 @@
                     </div>
                     
                     {/* Total & Input Diskon/PPN */}
-                    <div className="p-5 bg-gray-50 border-t border-gray-100 rounded-b-2xl">
+                    <div className="p-4 sm:p-5 bg-gray-50 border-t border-gray-100 rounded-b-2xl">
                       
-                      <div className="flex justify-between items-center mb-2 text-sm">
+                      <div className="flex justify-between items-center mb-2 text-xs sm:text-sm">
                         <span className="text-gray-500 font-bold">Subtotal</span>
                         <span className="font-bold text-gray-700">{formatRupiah(subtotal)}</span>
                       </div>
                       
-                      <div className="flex justify-between items-center mb-2 text-sm gap-2">
+                      <div className="flex justify-between items-center mb-2 text-xs sm:text-sm gap-2">
                          <span className="text-gray-500 font-bold whitespace-nowrap">Diskon (Rp)</span>
-                         <input type="number" min="0" value={cartDiscount} onChange={e => setCartDiscount(e.target.value)} className="w-28 p-1.5 border border-gray-200 rounded-lg text-right font-bold text-gray-700 focus:border-blue-500 outline-none shadow-inner" placeholder="0" />
+                         <input type="number" min="0" value={cartDiscount} onChange={e => setCartDiscount(e.target.value)} className="w-24 sm:w-28 p-1.5 border border-gray-200 rounded-lg text-right font-bold text-gray-700 focus:border-blue-500 outline-none shadow-inner text-xs sm:text-sm" placeholder="0" />
                       </div>
                       
-                      <div className="flex justify-between items-center mb-4 text-sm gap-2">
+                      <div className="flex justify-between items-center mb-3 sm:mb-4 text-xs sm:text-sm gap-2">
                          <span className="text-gray-500 font-bold whitespace-nowrap">PPN (%)</span>
-                         <input type="number" min="0" max="100" value={cartTaxRate} onChange={e => setCartTaxRate(e.target.value)} className="w-16 p-1.5 border border-gray-200 rounded-lg text-right font-bold text-gray-700 focus:border-blue-500 outline-none shadow-inner" placeholder="0" />
+                         <input type="number" min="0" max="100" value={cartTaxRate} onChange={e => setCartTaxRate(e.target.value)} className="w-14 sm:w-16 p-1.5 border border-gray-200 rounded-lg text-right font-bold text-gray-700 focus:border-blue-500 outline-none shadow-inner text-xs sm:text-sm" placeholder="0" />
                       </div>
 
-                      <div className="flex justify-between items-center mb-5 border-t border-gray-200 pt-3">
-                        <span className="text-gray-800 font-black">Grand Total</span>
-                        <span className="text-3xl font-black text-blue-600">{formatRupiah(grandTotal)}</span>
+                      <div className="flex justify-between items-center mb-4 sm:mb-5 border-t border-gray-200 pt-2 sm:pt-3">
+                        <span className="text-gray-800 font-black text-sm sm:text-base">Grand Total</span>
+                        <span className="text-2xl sm:text-3xl font-black text-blue-600">{formatRupiah(grandTotal)}</span>
                       </div>
 
-                      <button onClick={handlePayment} disabled={cart.length === 0} className={`w-full py-5 rounded-2xl font-black text-white flex justify-center items-center gap-3 shadow-lg transition-all ${cart.length === 0 ? 'bg-gray-300 shadow-none cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}><FileText size={22} /> Bayar Sekarang</button>
-                      {!printerDevice && cart.length > 0 && <p className="text-[10px] text-orange-500 text-center mt-4 font-bold tracking-tight"><AlertCircle size={10} className="inline mr-1 mb-0.5" /> Printer Bluetooth belum terhubung</p>}
+                      <button onClick={handlePayment} disabled={cart.length === 0} className={`w-full py-4 sm:py-5 rounded-2xl font-black text-white flex justify-center items-center gap-2 sm:gap-3 shadow-lg transition-all ${cart.length === 0 ? 'bg-gray-300 shadow-none cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}><FileText size={20} className="sm:w-[22px] sm:h-[22px]" /> Bayar Sekarang</button>
+                      {!printerDevice && cart.length > 0 && <p className="text-[9px] sm:text-[10px] text-orange-500 text-center mt-3 sm:mt-4 font-bold tracking-tight"><AlertCircle size={10} className="inline mr-1 mb-0.5" /> Printer Bluetooth belum terhubung</p>}
                     </div>
                   </div>
+
+                  {/* Tombol Melayang Keranjang (Khusus Mobile) */}
+                  {cart.length > 0 && (
+                    <a href="#cart-panel" className="lg:hidden fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-[0_4px_20px_rgba(37,99,235,0.4)] z-40 flex items-center justify-center gap-2 border-4 border-white transition-transform active:scale-95 animate-bounce hover:animate-none">
+                      <ShoppingCart size={24}/>
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-black px-2 py-1 rounded-full border-2 border-white">
+                        {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                      </span>
+                    </a>
+                  )}
+
                 </React.Fragment>
               )}
 
               {/* TAB: KELOLA PRODUK (INVENTORY) */}
               {activeTab === 'produk' && (
-                <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden w-full">
+                <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-hidden w-full">
                   
                   {/* Form Tambah/Edit */}
-                  <div className="w-full lg:w-1/3 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-fit shrink-0">
-                    <h2 className="font-bold text-gray-800 mb-6 flex items-center gap-2 text-xl">{editingId ? <Edit2 size={24} className="text-blue-600"/> : <Plus size={24} className="text-blue-600"/>}{editingId ? 'Edit Produk' : 'Produk Baru'}</h2>
-                    <form onSubmit={handleProductSubmit} className="flex flex-col gap-5">
-                      <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Nama Produk</label><input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Contoh: Kopi Hitam Panas"/></div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Harga Jual</label><input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="15000"/></div>
+                  <div className="w-full lg:w-1/3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 sm:p-6 h-fit shrink-0">
+                    <h2 className="font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2 text-lg sm:text-xl">{editingId ? <Edit2 size={22} className="text-blue-600"/> : <Plus size={22} className="text-blue-600"/>}{editingId ? 'Edit Produk' : 'Produk Baru'}</h2>
+                    <form onSubmit={handleProductSubmit} className="flex flex-col gap-4 sm:gap-5">
+                      <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Nama Produk</label><input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none" placeholder="Contoh: Kopi Hitam Panas"/></div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Harga Jual</label><input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none" placeholder="15000"/></div>
                         <div>
-                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">HPP / Modal</label>
-                          <input type="number" min="0" value={formData.hpp} onChange={e => setFormData({...formData, hpp: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="10000"/>
+                          <label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">HPP / Modal</label>
+                          <input type="number" min="0" value={formData.hpp} onChange={e => setFormData({...formData, hpp: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none" placeholder="10000"/>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Harga Grosir</label><input type="number" min="0" value={formData.wholesalePrice} onChange={e => setFormData({...formData, wholesalePrice: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Mis: 14000"/></div>
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Min. Qty Grosir</label><input type="number" min="0" value={formData.wholesaleMinQty} onChange={e => setFormData({...formData, wholesaleMinQty: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Mis: 5"/></div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Harga Grosir</label><input type="number" min="0" value={formData.wholesalePrice} onChange={e => setFormData({...formData, wholesalePrice: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none" placeholder="Mis: 14000"/></div>
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Min. Qty Grosir</label><input type="number" min="0" value={formData.wholesaleMinQty} onChange={e => setFormData({...formData, wholesaleMinQty: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none" placeholder="Mis: 5"/></div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Stok</label><input required type="number" min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="100"/></div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Stok</label><input required type="number" min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none" placeholder="100"/></div>
                         <div>
-                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">Kategori</label>
-                          <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white">
+                          <label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Kategori</label>
+                          <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white">
                             {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                           </select>
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase mb-2">Barcode Kemasan</label>
+                        <label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Barcode Kemasan</label>
                         <div className="flex gap-2">
-                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 border-2 border-gray-100 rounded-xl p-3 text-sm font-bold focus:border-blue-500 outline-none w-0" placeholder="Manual / Scan"/>
-                          <button type="button" onClick={() => setShowProductScanner(true)} className="bg-blue-50 text-blue-600 px-4 rounded-xl font-bold hover:bg-blue-100 transition-colors flex items-center justify-center border-2 border-blue-200 shrink-0" title="Scan Kamera / Upload">
-                            <Camera size={20} />
+                          <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none w-0" placeholder="Manual / Scan"/>
+                          <button type="button" onClick={() => setShowProductScanner(true)} className="bg-blue-50 text-blue-600 px-3 sm:px-4 rounded-xl font-bold hover:bg-blue-100 transition-colors flex items-center justify-center border-2 border-blue-200 shrink-0" title="Scan Kamera / Upload">
+                            <Camera size={18} className="sm:w-[20px] sm:h-[20px]" />
                           </button>
-                          <button type="button" onClick={handleGenerateBarcode} className="bg-gray-100 text-gray-600 px-4 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center border-2 border-gray-200 shrink-0" title="Generate Otomatis">
+                          <button type="button" onClick={handleGenerateBarcode} className="bg-gray-100 text-gray-600 px-3 sm:px-4 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center border-2 border-gray-200 shrink-0 text-xs sm:text-sm" title="Generate Otomatis">
                             Auto
                           </button>
                         </div>
                       </div>
                       <div className="flex gap-3 mt-2">
-                        <button type="submit" className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-100"><Save size={20}/> Simpan</button>
-                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', hpp:'', wholesalePrice:'', wholesaleMinQty:'', category: categories[0] || 'Lainnya', stock:'', barcode:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
+                        <button type="submit" className="flex-1 bg-blue-600 text-white py-3 sm:py-4 rounded-xl font-bold hover:bg-blue-700 flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-100 text-sm"><Save size={18}/> Simpan</button>
+                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', hpp:'', wholesalePrice:'', wholesaleMinQty:'', category: categories[0] || 'Lainnya', stock:'', barcode:''});}} className="px-5 sm:px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 text-sm">Batal</button>}
                       </div>
                     </form>
                   </div>
@@ -1423,58 +1458,58 @@
                   {/* Tabel Inventory */}
                   <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
                     
-                    <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center shrink-0">
+                    <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center shrink-0">
                       <div className="flex flex-col">
                         <h2 className="font-bold text-gray-700 text-lg flex-shrink-0">Inventory ({filteredInventory.length})</h2>
-                        <span className="text-xs font-bold text-indigo-600 mt-1">Total Aset Modal: {formatRupiah(totalInventoryValue)}</span>
+                        <span className="text-[10px] sm:text-xs font-bold text-indigo-600 mt-1">Total Aset: {formatRupiah(totalInventoryValue)}</span>
                       </div>
                       <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
                         <div className="relative flex-1 sm:w-48">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search size={14} className="text-gray-400" /></div>
-                          <input type="text" value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none shadow-sm" placeholder="Cari nama/barcode..."/>
+                          <input type="text" value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-xs sm:text-sm font-bold focus:border-blue-500 outline-none shadow-sm" placeholder="Cari nama/barcode..."/>
                           {invSearchTerm && <button onClick={() => setInvSearchTerm('')} className="absolute inset-y-0 right-0 pr-2 flex items-center text-gray-400 hover:text-red-500"><X size={14} /></button>}
                         </div>
                         <div className="relative flex-1 sm:w-48">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><FilterIcon size={14} className="text-gray-400" /></div>
-                          <select value={invStockFilter} onChange={(e) => setInvStockFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:border-blue-500 outline-none appearance-none cursor-pointer shadow-sm">
-                             <option value="all">Semua Status Stok</option>
-                             <option value="low">Stok Menipis (≤ 5)</option>
+                          <select value={invStockFilter} onChange={(e) => setInvStockFilter(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs sm:text-sm font-bold focus:border-blue-500 outline-none appearance-none cursor-pointer shadow-sm">
+                             <option value="all">Semua Stok</option>
+                             <option value="low">Menipis (≤ 5)</option>
                           </select>
                         </div>
                       </div>
                     </div>
 
-                    <div className="overflow-y-auto p-0 flex-1 block">
+                    <div className="overflow-auto p-0 flex-1 block w-full">
                       <table className="w-full text-left border-collapse min-w-[700px]">
-                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga Jual & Grosir</th><th className="p-5 border-b border-gray-200 text-gray-500">Modal (HPP)</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-right text-indigo-400">Total Modal</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
+                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-4 sm:p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-4 sm:p-5 border-b border-gray-200">Kategori</th><th className="p-4 sm:p-5 border-b border-gray-200">Harga Jual & Grosir</th><th className="p-4 sm:p-5 border-b border-gray-200 text-gray-500">Modal (HPP)</th><th className="p-4 sm:p-5 border-b border-gray-200 text-center">Stok</th><th className="p-4 sm:p-5 border-b border-gray-200 text-right text-indigo-400">Total Modal</th><th className="p-4 sm:p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
                         <tbody className="text-sm">
                           {filteredInventory.map(product => {
                             const stock = product.stock !== undefined ? product.stock : 0;
                             const totalModal = (product.hpp || 0) * stock;
                             return (
                               <tr key={product.id} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors">
-                                <td className="p-5 font-bold text-gray-800">
+                                <td className="p-4 sm:p-5 font-bold text-gray-800">
                                   {product.name}
                                   {product.barcode && <div className="text-[10px] text-gray-400 font-medium flex items-center gap-1 mt-1"><ScanBarcode size={12}/> {product.barcode}</div>}
                                 </td>
-                                <td className="p-5"><span className="bg-white px-3 py-1 rounded-full text-[10px] font-black border border-gray-200 text-gray-500 uppercase">{product.category}</span></td>
-                                <td className="p-5 font-black text-blue-600">
+                                <td className="p-4 sm:p-5"><span className="bg-white px-2 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black border border-gray-200 text-gray-500 uppercase">{product.category}</span></td>
+                                <td className="p-4 sm:p-5 font-black text-blue-600 text-xs sm:text-sm">
                                   {formatRupiah(product.price)}
                                   {product.wholesaleMinQty > 0 && product.wholesalePrice > 0 && (
-                                    <div className="text-[10px] font-bold text-green-600 mt-1">
+                                    <div className="text-[9px] sm:text-[10px] font-bold text-green-600 mt-1">
                                       Grosir: {formatRupiah(product.wholesalePrice)} (≥{product.wholesaleMinQty})
                                     </div>
                                   )}
                                 </td>
-                                <td className="p-5 font-bold text-gray-500 text-xs">{formatRupiah(product.hpp || 0)}</td>
-                                <td className="p-5 text-center"><span className={`px-3 py-1 rounded-lg font-black text-xs border ${stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>{stock}</span></td>
-                                <td className="p-5 text-right font-black text-indigo-600 text-xs">{formatRupiah(totalModal)}</td>
-                                <td className="p-5 flex justify-center gap-1">
+                                <td className="p-4 sm:p-5 font-bold text-gray-500 text-xs">{formatRupiah(product.hpp || 0)}</td>
+                                <td className="p-4 sm:p-5 text-center"><span className={`px-2 sm:px-3 py-1 rounded-lg font-black text-xs border ${stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>{stock}</span></td>
+                                <td className="p-4 sm:p-5 text-right font-black text-indigo-600 text-xs">{formatRupiah(totalModal)}</td>
+                                <td className="p-4 sm:p-5 flex justify-center gap-1">
                                   {product.barcode && (
-                                    <button onClick={() => printBarcodeLabel(product)} className="p-2.5 text-gray-500 hover:bg-gray-200 rounded-xl transition-all" title="Cetak Label Barcode"><Printer size={16}/></button>
+                                    <button onClick={() => printBarcodeLabel(product)} className="p-2 sm:p-2.5 text-gray-500 hover:bg-gray-200 rounded-xl transition-all" title="Cetak Label Barcode"><Printer size={14} className="sm:w-[16px] sm:h-[16px]"/></button>
                                   )}
-                                  <button onClick={() => handleEditProduct(product)} className="p-2.5 text-blue-500 hover:bg-blue-100 rounded-xl transition-all" title="Edit"><Edit2 size={16}/></button>
-                                  <button onClick={() => handleDeleteProduct(product.id)} className="p-2.5 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={16}/></button>
+                                  <button onClick={() => handleEditProduct(product)} className="p-2 sm:p-2.5 text-blue-500 hover:bg-blue-100 rounded-xl transition-all" title="Edit"><Edit2 size={14} className="sm:w-[16px] sm:h-[16px]"/></button>
+                                  <button onClick={() => handleDeleteProduct(product.id)} className="p-2 sm:p-2.5 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={14} className="sm:w-[16px] sm:h-[16px]"/></button>
                                 </td>
                               </tr>
                             );
@@ -1490,18 +1525,18 @@
               {/* TAB: REKAP PENJUALAN */}
               {activeTab === 'rekap' && (
                 <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden w-full">
-                   <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                   <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                       <h2 className="font-bold text-gray-700 text-lg">Log Penjualan</h2>
                       
-                      <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
                         {/* FILTER REKAP */}
-                        <div className="flex flex-wrap items-center gap-2 flex-1 md:flex-none">
+                        <div className="flex flex-wrap items-center gap-2 flex-1 md:flex-none w-full md:w-auto">
                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
-                             <FilterIcon size={18} className="text-gray-400" />
+                             <FilterIcon size={14} className="text-gray-400 sm:w-[18px] sm:h-[18px]" />
                              <select 
                                 value={filterMode} 
                                 onChange={(e) => setFilterMode(e.target.value)} 
-                                className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
+                                className="bg-transparent text-xs sm:text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
                              >
                                <option value="all">Semua Waktu</option>
                                <option value="daily">Harian</option>
@@ -1510,12 +1545,12 @@
                            </div>
 
                            {filterMode === 'monthly' && (
-                             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
-                                <Calendar size={18} className="text-gray-400" />
+                             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto mt-2 sm:mt-0">
+                                <Calendar size={14} className="text-gray-400 sm:w-[18px] sm:h-[18px]" />
                                 <select 
                                    value={selectedMonth} 
                                    onChange={(e) => setSelectedMonth(e.target.value)} 
-                                   className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
+                                   className="bg-transparent text-xs sm:text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
                                 >
                                   {availableMonths.length === 0 && <option value="all">Belum ada data</option>}
                                   {availableMonths.map(m => (
@@ -1526,52 +1561,52 @@
                            )}
 
                            {filterMode === 'daily' && (
-                             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
-                                <Calendar size={18} className="text-gray-400" />
+                             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto mt-2 sm:mt-0">
+                                <Calendar size={14} className="text-gray-400 sm:w-[18px] sm:h-[18px]" />
                                 <input 
                                    type="date"
                                    value={selectedDate} 
                                    onChange={(e) => setSelectedDate(e.target.value)} 
-                                   className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
+                                   className="bg-transparent text-xs sm:text-sm font-bold text-gray-700 outline-none cursor-pointer w-full"
                                 />
                              </div>
                            )}
                         </div>
 
-                        <div className="text-xs font-black text-blue-700 bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 shadow-sm whitespace-nowrap mt-2 sm:mt-0">PENDAPATAN: <span className="text-sm ml-1">{formatRupiah(totalRevenue)}</span></div>
-                        <div className="text-xs font-black text-green-700 bg-green-50 px-4 py-3 rounded-xl border border-green-100 shadow-sm flex items-center gap-1 whitespace-nowrap mt-2 sm:mt-0"><TrendingUp size={14}/> PROFIT: <span className="text-sm ml-1">{formatRupiah(totalProfit)}</span></div>
+                        <div className="text-[10px] sm:text-xs font-black text-blue-700 bg-blue-50 px-3 sm:px-4 py-2 sm:py-3 rounded-xl border border-blue-100 shadow-sm whitespace-nowrap mt-2 md:mt-0">PENDAPATAN: <span className="text-xs sm:text-sm ml-1">{formatRupiah(totalRevenue)}</span></div>
+                        <div className="text-[10px] sm:text-xs font-black text-green-700 bg-green-50 px-3 sm:px-4 py-2 sm:py-3 rounded-xl border border-green-100 shadow-sm flex items-center gap-1 whitespace-nowrap mt-2 md:mt-0"><TrendingUp size={12} className="sm:w-[14px] sm:h-[14px]"/> PROFIT: <span className="text-xs sm:text-sm ml-1">{formatRupiah(totalProfit)}</span></div>
                         
                         {filteredSales.length > 0 && (
                           <div className="flex items-center gap-2 w-full md:w-auto justify-end mt-2 md:mt-0">
-                            <button onClick={printSalesSummaryAsPDF} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-100 transition-all active:scale-95"><Printer size={16} /> Laporan PDF</button>
-                            <button onClick={() => showConfirm('Bersihkan SEMUA riwayat penjualan? Tindakan ini tidak bisa dibatalkan.', () => setSalesHistory([]))} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl border border-red-100 transition-all" title="Reset History"><Trash2 size={18} /></button>
+                            <button onClick={printSalesSummaryAsPDF} className="flex-1 sm:flex-none bg-blue-600 text-white px-4 py-2 sm:py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-100 transition-all active:scale-95"><Printer size={14} className="sm:w-[16px] sm:h-[16px]" /> Laporan PDF</button>
+                            <button onClick={() => showConfirm('Bersihkan SEMUA riwayat penjualan? Tindakan ini tidak bisa dibatalkan.', () => setSalesHistory([]))} className="p-2 sm:p-2.5 text-red-500 hover:bg-red-50 rounded-xl border border-red-100 transition-all shrink-0" title="Reset History"><Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" /></button>
                           </div>
                         )}
                       </div>
                     </div>
                     
-                    <div className="overflow-y-auto p-5 flex flex-col gap-5 flex-1 bg-gray-50/30">
+                    <div className="overflow-y-auto p-4 sm:p-5 flex flex-col gap-4 sm:gap-5 flex-1 bg-gray-50/30">
                       {filteredSales.length === 0 ? (
-                        <div className="m-auto text-center text-gray-300 py-16"><ClipboardList size={80} className="mx-auto mb-4 opacity-10" /><p className="font-bold text-gray-400">Belum Ada Transaksi pada Periode Ini</p></div>
+                        <div className="m-auto text-center text-gray-300 py-16"><ClipboardList size={60} className="mx-auto mb-4 opacity-10 sm:w-[80px] sm:h-[80px]" /><p className="font-bold text-gray-400 text-sm sm:text-base">Belum Ada Transaksi pada Periode Ini</p></div>
                       ) : (
                         filteredSales.map(sale => {
                           const saleHpp = sale.items.reduce((sum, item) => sum + ((item.hpp || 0) * item.quantity), 0);
                           return (
-                            <div key={sale.id} className="border border-gray-100 rounded-2xl p-5 hover:shadow-lg hover:border-blue-200 transition-all bg-white relative group">
-                              <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
-                                <div className="flex flex-col"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu & Kasir</span><span className="text-sm text-gray-800 font-bold">{sale.date}</span><span className="text-xs text-gray-500 font-medium mt-0.5"><User size={10} className="inline mr-1 mb-0.5"/>{sale.cashier || 'Kasir'}</span></div>
-                                <div className="flex items-center gap-4 text-right">
+                            <div key={sale.id} className="border border-gray-100 rounded-2xl p-4 sm:p-5 hover:shadow-lg hover:border-blue-200 transition-all bg-white relative group">
+                              <div className="flex justify-between items-center mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-100">
+                                <div className="flex flex-col"><span className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest">Waktu & Kasir</span><span className="text-xs sm:text-sm text-gray-800 font-bold">{sale.date}</span><span className="text-[10px] sm:text-xs text-gray-500 font-medium mt-0.5"><User size={10} className="inline mr-1 mb-0.5"/>{sale.cashier || 'Kasir'}</span></div>
+                                <div className="flex items-center gap-3 sm:gap-4 text-right">
                                   <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Grand Total</span>
-                                    <span className="font-black text-blue-600 text-xl">{formatRupiah(sale.total)}</span>
-                                    <span className="text-[10px] font-bold text-green-500 mt-1">Profit: {formatRupiah(sale.total - saleHpp)}</span>
+                                    <span className="text-[9px] sm:text-[10px] font-black text-blue-400 uppercase tracking-widest">Grand Total</span>
+                                    <span className="font-black text-blue-600 text-base sm:text-xl">{formatRupiah(sale.total)}</span>
+                                    <span className="text-[9px] sm:text-[10px] font-bold text-green-500 mt-1">Profit: {formatRupiah(sale.total - saleHpp)}</span>
                                   </div>
-                                  <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-3 rounded-2xl transition-all shadow-inner" title="Lihat Struk"><FileText size={20} /></button>
+                                  <button onClick={() => setCurrentReceipt(sale)} className="bg-gray-50 text-gray-500 group-hover:bg-blue-600 group-hover:text-white p-2.5 sm:p-3 rounded-2xl transition-all shadow-inner" title="Lihat Struk"><FileText size={18} className="sm:w-[20px] sm:h-[20px]" /></button>
                                 </div>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {sale.items.map((item, idx) => (
-                                  <div key={idx} className="bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 flex items-center gap-2"><span className="bg-blue-100 text-blue-600 px-1.5 rounded-md">{item.quantity}x</span>{item.product.name}</div>
+                                  <div key={idx} className="bg-gray-50 border border-gray-100 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-gray-600 flex items-center gap-1.5 sm:gap-2"><span className="bg-blue-100 text-blue-600 px-1.5 rounded-md">{item.quantity}x</span>{item.product.name}</div>
                                 ))}
                               </div>
                             </div>
@@ -1586,88 +1621,88 @@
               {activeTab === 'pengaturan' && (
                 <div className="flex-1 flex flex-col items-center w-full max-w-4xl mx-auto pb-10">
                   
-                  <div className="w-full bg-gray-900 text-white rounded-3xl shadow-xl border border-gray-800 p-8 mt-4 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none"><Database size={150} /></div>
+                  <div className="w-full bg-gray-900 text-white rounded-3xl shadow-xl border border-gray-800 p-6 sm:p-8 mt-2 sm:mt-4 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none"><Database size={100} className="sm:w-[150px] sm:h-[150px]" /></div>
                     <div className="relative z-10">
-                      <h2 className="font-bold mb-4 flex items-center gap-3 text-2xl"><Database size={32} className="text-blue-400"/> Backup & Restore Data</h2>
-                      <p className="text-sm text-gray-400 mb-8 leading-relaxed max-w-2xl">Data kasir ini hanya tersimpan di browser perangkat yang Anda gunakan. Untuk memindahkan atau menyinkronkan data ke HP / Laptop lain, silakan Backup data di perangkat ini, lalu Restore file tersebut di perangkat tujuan.</p>
+                      <h2 className="font-bold mb-3 sm:mb-4 flex items-center gap-2 sm:gap-3 text-lg sm:text-2xl"><Database size={24} className="text-blue-400 sm:w-[32px] sm:h-[32px]"/> Backup & Restore Data</h2>
+                      <p className="text-xs sm:text-sm text-gray-400 mb-6 sm:mb-8 leading-relaxed max-w-2xl">Data kasir ini hanya tersimpan di browser perangkat yang Anda gunakan. Untuk memindahkan atau menyinkronkan data ke HP / Laptop lain, silakan Backup data di perangkat ini, lalu Restore file tersebut di perangkat tujuan.</p>
                       
-                      <div className="flex flex-col sm:flex-row gap-4">
-                        <button onClick={handleBackupData} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-blue-900/50">
-                          <Download size={20} /> Backup Data (Unduh)
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                        <button onClick={handleBackupData} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white p-3 sm:p-4 rounded-2xl text-sm sm:text-base font-bold flex items-center justify-center gap-2 sm:gap-3 transition-all active:scale-95 shadow-lg shadow-blue-900/50">
+                          <Download size={18} className="sm:w-[20px] sm:h-[20px]" /> Backup (Unduh)
                         </button>
                         
                         <div className="flex-1 relative">
                           <input type="file" accept=".json" onChange={handleRestoreData} ref={importFileRef} className="hidden" />
-                          <button onClick={() => importFileRef.current.click()} className="w-full bg-gray-800 hover:bg-gray-700 border-2 border-gray-700 text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg">
-                            <Upload size={20} /> Restore Data (Muat)
+                          <button onClick={() => importFileRef.current.click()} className="w-full bg-gray-800 hover:bg-gray-700 border-2 border-gray-700 text-white p-3 sm:p-4 rounded-2xl text-sm sm:text-base font-bold flex items-center justify-center gap-2 sm:gap-3 transition-all active:scale-95 shadow-lg">
+                            <Upload size={18} className="sm:w-[20px] sm:h-[20px]" /> Restore (Muat)
                           </button>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mt-6">
-                    <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-2xl pb-4 border-b border-gray-100"><Store size={32} className="text-blue-600"/> Identitas Toko</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="flex flex-col items-center justify-center p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl group relative transition-all hover:border-blue-300">
-                        <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center overflow-hidden mb-4 shadow-inner border border-gray-100 relative group/logo">
+                  <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8 mt-4 sm:mt-6">
+                    <h2 className="font-bold text-gray-800 mb-6 sm:mb-8 flex items-center gap-2 sm:gap-3 text-lg sm:text-2xl pb-4 border-b border-gray-100"><Store size={24} className="text-blue-600 sm:w-[32px] sm:h-[32px]"/> Identitas Toko</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                      <div className="flex flex-col items-center justify-center p-4 sm:p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl group relative transition-all hover:border-blue-300">
+                        <div className="w-24 h-24 sm:w-32 sm:h-32 bg-white rounded-3xl flex items-center justify-center overflow-hidden mb-3 sm:mb-4 shadow-inner border border-gray-100 relative group/logo">
                           {storeInfo.logo ? (
                             <React.Fragment>
                               <img src={storeInfo.logo} className="w-full h-full object-contain" />
-                              <button onClick={() => setStoreInfo({...storeInfo, logo: ''})} className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity"><Trash2 size={24} /></button>
+                              <button onClick={() => setStoreInfo({...storeInfo, logo: ''})} className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity"><Trash2 size={20} className="sm:w-[24px] sm:h-[24px]" /></button>
                             </React.Fragment>
-                          ) : ( <Image size={48} className="text-gray-300 group-hover:text-blue-400 transition-colors" /> )}
+                          ) : ( <Image size={36} className="text-gray-300 group-hover:text-blue-400 transition-colors sm:w-[48px] sm:h-[48px]" /> )}
                         </div>
                         <input type="file" ref={fileInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
-                        <button onClick={() => fileInputRef.current.click()} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-4 rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 mb-4"><Upload size={16} /> Pilih dari Perangkat</button>
-                        <div className="w-full"><label className="block text-[10px] font-black text-gray-400 uppercase mb-1 tracking-widest">Atau via Link URL</label><input type="text" value={storeInfo.logo} onChange={e => setStoreInfo({...storeInfo, logo: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2 text-[10px] font-medium focus:border-blue-500 outline-none shadow-sm" placeholder="https://link-gambar.com/logo.png" /></div>
+                        <button onClick={() => fileInputRef.current.click()} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 mb-3 sm:mb-4"><Upload size={14} className="sm:w-[16px] sm:h-[16px]" /> Pilih Gambar</button>
+                        <div className="w-full"><label className="block text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1 tracking-widest">Atau via Link URL</label><input type="text" value={storeInfo.logo} onChange={e => setStoreInfo({...storeInfo, logo: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2 text-[10px] font-medium focus:border-blue-500 outline-none shadow-sm" placeholder="https://link-gambar.com/logo.png" /></div>
                       </div>
-                      <div className="flex flex-col gap-6">
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Nama Toko</label><input type="text" value={storeInfo.name} onChange={e => setStoreInfo({...storeInfo, name: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none shadow-inner" placeholder="Contoh: Kedai Kopi Senja"/></div>
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Nama Kasir / Operator</label><input type="text" value={storeInfo.cashierName || ''} onChange={e => setStoreInfo({...storeInfo, cashierName: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none shadow-inner" placeholder="Contoh: Budi"/></div>
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Alamat Fisik</label><textarea value={storeInfo.address} onChange={e => setStoreInfo({...storeInfo, address: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none resize-none h-24 shadow-inner" placeholder="Jl. Raya No. 123..."></textarea></div>
+                      <div className="flex flex-col gap-4 sm:gap-6">
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Nama Toko</label><input type="text" value={storeInfo.name} onChange={e => setStoreInfo({...storeInfo, name: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none shadow-inner" placeholder="Contoh: Kedai Kopi Senja"/></div>
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Nama Kasir / Operator</label><input type="text" value={storeInfo.cashierName || ''} onChange={e => setStoreInfo({...storeInfo, cashierName: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none shadow-inner" placeholder="Contoh: Budi"/></div>
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Alamat Fisik</label><textarea value={storeInfo.address} onChange={e => setStoreInfo({...storeInfo, address: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none resize-none h-20 sm:h-24 shadow-inner" placeholder="Jl. Raya No. 123..."></textarea></div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mt-6">
-                    <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-2xl pb-4 border-b border-gray-100"><QrCode size={32} className="text-blue-600"/> Info Pembayaran Online</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="flex flex-col items-center justify-center p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl group relative transition-all hover:border-blue-300">
-                        <div className="w-40 h-40 bg-white rounded-3xl flex items-center justify-center overflow-hidden mb-4 shadow-inner border border-gray-100 relative group/qris">
+                  <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8 mt-4 sm:mt-6">
+                    <h2 className="font-bold text-gray-800 mb-6 sm:mb-8 flex items-center gap-2 sm:gap-3 text-lg sm:text-2xl pb-4 border-b border-gray-100"><QrCode size={24} className="text-blue-600 sm:w-[32px] sm:h-[32px]"/> Info Pembayaran Online</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                      <div className="flex flex-col items-center justify-center p-4 sm:p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl group relative transition-all hover:border-blue-300">
+                        <div className="w-28 h-28 sm:w-40 sm:h-40 bg-white rounded-3xl flex items-center justify-center overflow-hidden mb-3 sm:mb-4 shadow-inner border border-gray-100 relative group/qris">
                           {storeInfo.qrisImage ? (
                             <React.Fragment>
                               <img src={storeInfo.qrisImage} className="w-full h-full object-contain" />
-                              <button onClick={() => setStoreInfo({...storeInfo, qrisImage: ''})} className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover/qris:opacity-100 transition-opacity"><Trash2 size={24} /></button>
+                              <button onClick={() => setStoreInfo({...storeInfo, qrisImage: ''})} className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover/qris:opacity-100 transition-opacity"><Trash2 size={20} className="sm:w-[24px] sm:h-[24px]" /></button>
                             </React.Fragment>
-                          ) : ( <QrCode size={48} className="text-gray-300 group-hover:text-blue-400 transition-colors" /> )}
+                          ) : ( <QrCode size={36} className="text-gray-300 group-hover:text-blue-400 transition-colors sm:w-[48px] sm:h-[48px]" /> )}
                         </div>
                         <input type="file" ref={qrisInputRef} onChange={handleQrisUpload} accept="image/*" className="hidden" />
-                        <button onClick={() => qrisInputRef.current.click()} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-4 rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 mb-4"><Upload size={16} /> Upload QRIS (Maks 2MB)</button>
-                        <div className="w-full"><label className="block text-[10px] font-black text-gray-400 uppercase mb-1 tracking-widest">Atau via Link URL</label><input type="text" value={storeInfo.qrisImage || ''} onChange={e => setStoreInfo({...storeInfo, qrisImage: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2 text-[10px] font-medium focus:border-blue-500 outline-none shadow-sm" placeholder="https://link.com/qris.png" /></div>
+                        <button onClick={() => qrisInputRef.current.click()} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 mb-3 sm:mb-4"><Upload size={14} className="sm:w-[16px] sm:h-[16px]" /> Upload QRIS (Maks 2MB)</button>
+                        <div className="w-full"><label className="block text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1 tracking-widest">Atau via Link URL</label><input type="text" value={storeInfo.qrisImage || ''} onChange={e => setStoreInfo({...storeInfo, qrisImage: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2 text-[10px] font-medium focus:border-blue-500 outline-none shadow-sm" placeholder="https://link.com/qris.png" /></div>
                       </div>
-                      <div className="flex flex-col gap-6">
+                      <div className="flex flex-col gap-4 sm:gap-6">
                         <div>
-                          <label className="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Info Rekening / E-Wallet</label>
-                          <textarea value={storeInfo.bankInfo || ''} onChange={e => setStoreInfo({...storeInfo, bankInfo: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none resize-none h-32 shadow-inner" placeholder="Contoh:&#10;BCA: 123456789 a.n Toko&#10;OVO: 08123456789"></textarea>
+                          <label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Info Rekening / E-Wallet</label>
+                          <textarea value={storeInfo.bankInfo || ''} onChange={e => setStoreInfo({...storeInfo, bankInfo: e.target.value})} className="w-full border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none resize-none h-24 sm:h-32 shadow-inner" placeholder="Contoh:&#10;BCA: 123456789 a.n Toko&#10;OVO: 08123456789"></textarea>
                         </div>
-                        <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-xs font-bold border border-blue-100 flex gap-2">
-                          <AlertCircle size={16} className="shrink-0"/> QRIS dan Info Rekening ini akan ditampilkan kepada pelanggan saat Anda memilih metode pembayaran Online di Kasir.
+                        <div className="bg-blue-50 text-blue-800 p-3 sm:p-4 rounded-xl text-[10px] sm:text-xs font-bold border border-blue-100 flex gap-2">
+                          <AlertCircle size={14} className="shrink-0 sm:w-[16px] sm:h-[16px]"/> QRIS dan Info Rekening ini akan ditampilkan kepada pelanggan saat Anda memilih metode pembayaran Online di Kasir.
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 w-full mt-4 sm:mt-6">
                     {/* PENGATURAN PRINTER THERMAL */}
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-                      <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><Printer size={24} className="text-blue-600"/> Pengaturan Printer</h2>
-                      <div className="flex flex-col gap-6">
-                        <div className="flex items-center justify-between bg-blue-50 p-4 rounded-xl border border-blue-100">
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8">
+                      <h2 className="font-bold text-gray-800 mb-6 sm:mb-8 flex items-center gap-2 sm:gap-3 text-lg sm:text-xl pb-4 border-b border-gray-100"><Printer size={20} className="text-blue-600 sm:w-[24px] sm:h-[24px]"/> Pengaturan Printer</h2>
+                      <div className="flex flex-col gap-4 sm:gap-6">
+                        <div className="flex items-center justify-between bg-blue-50 p-3 sm:p-4 rounded-xl border border-blue-100">
                           <div>
-                            <h4 className="font-bold text-sm text-gray-800">Koneksi Bluetooth</h4>
-                            <p className="text-xs text-gray-500 mt-0.5">{printerDevice ? printerDevice.name : 'Belum terhubung'}</p>
+                            <h4 className="font-bold text-xs sm:text-sm text-gray-800">Koneksi Bluetooth</h4>
+                            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">{printerDevice ? printerDevice.name : 'Belum terhubung'}</p>
                           </div>
                           {printerDevice ? (
                             <button onClick={() => {
@@ -1677,70 +1712,70 @@
                                 setPrinterDevice(null);
                                 setPrinterCharacteristic(null);
                                 showAlert("Printer Bluetooth telah diputuskan.", "Informasi");
-                            }} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 shadow-sm transition-colors">Putuskan</button>
+                            }} className="px-3 sm:px-4 py-2 bg-red-100 text-red-600 rounded-lg text-[10px] sm:text-xs font-bold hover:bg-red-200 shadow-sm transition-colors">Putuskan</button>
                           ) : (
-                            <button onClick={connectToPrinter} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm transition-colors">Hubungkan</button>
+                            <button onClick={connectToPrinter} className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg text-[10px] sm:text-xs font-bold hover:bg-blue-700 shadow-sm transition-colors">Hubungkan</button>
                           )}
                         </div>
 
                         <div>
-                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">Ukuran Kertas Thermal</label>
-                          <select value={printerSettings.paperSize} onChange={e => setPrinterSettings({...printerSettings, paperSize: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white cursor-pointer shadow-inner">
+                          <label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Ukuran Kertas Thermal</label>
+                          <select value={printerSettings.paperSize} onChange={e => setPrinterSettings({...printerSettings, paperSize: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white cursor-pointer shadow-inner">
                             <option value="58">58mm (Kecil - 32 Karakter)</option>
                             <option value="80">80mm (Besar - 48 Karakter)</option>
                           </select>
                         </div>
 
-                        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                        <div className="flex items-center justify-between bg-gray-50 p-3 sm:p-4 rounded-xl border border-gray-100">
                           <div>
-                            <h4 className="font-bold text-sm text-gray-800">Cetak Otomatis</h4>
-                            <p className="text-[10px] text-gray-500 mt-0.5">Struk dicetak otomatis saat transaksi berhasil</p>
+                            <h4 className="font-bold text-xs sm:text-sm text-gray-800">Cetak Otomatis</h4>
+                            <p className="text-[9px] sm:text-[10px] text-gray-500 mt-0.5">Struk dicetak otomatis saat transaksi berhasil</p>
                           </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0">
                             <input type="checkbox" checked={printerSettings.autoPrint} onChange={e => setPrinterSettings({...printerSettings, autoPrint: e.target.checked})} className="sr-only peer" />
                             <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                           </label>
                         </div>
 
-                        <button onClick={openCashDrawer} disabled={!printerCharacteristic} className="w-full py-4 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all active:scale-95 disabled:bg-gray-300 disabled:text-gray-500 text-sm flex items-center justify-center gap-2 shadow-lg">
-                          <Archive size={18} /> Test Buka Laci Kasir
+                        <button onClick={openCashDrawer} disabled={!printerCharacteristic} className="w-full py-3 sm:py-4 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all active:scale-95 disabled:bg-gray-300 disabled:text-gray-500 text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg">
+                          <Archive size={16} className="sm:w-[18px] sm:h-[18px]" /> Test Buka Laci Kasir
                         </button>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-                      <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><Lock size={24} className="text-blue-600"/> Keamanan (Ubah PIN)</h2>
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8">
+                      <h2 className="font-bold text-gray-800 mb-6 sm:mb-8 flex items-center gap-2 sm:gap-3 text-lg sm:text-xl pb-4 border-b border-gray-100"><Lock size={20} className="text-blue-600 sm:w-[24px] sm:h-[24px]"/> Keamanan (Ubah PIN)</h2>
                       <form onSubmit={handleChangePin} className="flex flex-col gap-4">
-                        {pinMessage.text && <div className={`p-4 rounded-xl text-xs font-bold border animate-bounce ${pinMessage.type === 'error' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{pinMessage.text}</div>}
-                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">PIN Saat Ini</label><input required type="password" value={oldPinInput} onChange={e => setOldPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-4 text-center font-black tracking-widest outline-none focus:border-red-400" /></div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">PIN Baru</label><input required type="password" value={newPinInput} onChange={e => setNewPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-4 text-center font-black tracking-widest outline-none focus:border-blue-400" /></div>
-                          <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Konfirmasi</label><input required type="password" value={confirmPinInput} onChange={e => setConfirmPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-4 text-center font-black tracking-widest outline-none focus:border-blue-400" /></div>
+                        {pinMessage.text && <div className={`p-3 sm:p-4 rounded-xl text-[10px] sm:text-xs font-bold border animate-bounce ${pinMessage.type === 'error' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{pinMessage.text}</div>}
+                        <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">PIN Saat Ini</label><input required type="password" value={oldPinInput} onChange={e => setOldPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-center font-black tracking-widest outline-none focus:border-red-400" /></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">PIN Baru</label><input required type="password" value={newPinInput} onChange={e => setNewPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-center font-black tracking-widest outline-none focus:border-blue-400" /></div>
+                          <div><label className="block text-[10px] sm:text-xs font-black text-gray-500 uppercase mb-2">Konfirmasi</label><input required type="password" value={confirmPinInput} onChange={e => setConfirmPinInput(e.target.value)} className="w-full border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-center font-black tracking-widest outline-none focus:border-blue-400" /></div>
                         </div>
-                        <button type="submit" className="mt-4 w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-black transition-all active:scale-95 shadow-lg shadow-gray-200">Ganti PIN Akses</button>
+                        <button type="submit" className="mt-2 sm:mt-4 w-full py-3 sm:py-4 bg-gray-900 text-white rounded-2xl text-sm font-bold hover:bg-black transition-all active:scale-95 shadow-lg shadow-gray-200">Ganti PIN Akses</button>
                       </form>
                     </div>
 
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-                      <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><PackageSearch size={24} className="text-blue-600"/> Master Kategori</h2>
-                      <div className="flex gap-2 mb-6">
-                        <input type="text" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Nama Kategori..." className="flex-1 border-2 border-gray-50 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none shadow-inner"/>
-                        <button onClick={handleAddCategory} className="px-6 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all active:scale-95 shadow-md shadow-blue-100"><Plus size={20}/></button>
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8 md:col-span-2 lg:col-span-1">
+                      <h2 className="font-bold text-gray-800 mb-6 sm:mb-8 flex items-center gap-2 sm:gap-3 text-lg sm:text-xl pb-4 border-b border-gray-100"><PackageSearch size={20} className="text-blue-600 sm:w-[24px] sm:h-[24px]"/> Master Kategori</h2>
+                      <div className="flex gap-2 mb-4 sm:mb-6">
+                        <input type="text" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Nama Kategori..." className="flex-1 border-2 border-gray-50 rounded-xl p-3 sm:p-4 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none shadow-inner w-0"/>
+                        <button onClick={handleAddCategory} className="px-4 sm:px-6 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all active:scale-95 shadow-md shadow-blue-100 shrink-0"><Plus size={18} className="sm:w-[20px] sm:h-[20px]"/></button>
                       </div>
                       <div className="flex flex-col gap-2 max-h-[250px] overflow-y-auto pr-2">
                         {categories.map(cat => (
                           editingCategory === cat ? (
                             <div key={cat} className="flex items-center gap-2 bg-blue-50 p-2 rounded-xl border-2 border-blue-200">
-                              <input type="text" value={editCategoryInput} onChange={e => setEditCategoryInput(e.target.value)} className="flex-1 bg-white border-2 border-blue-100 rounded-lg p-3 text-sm font-bold focus:border-blue-500 outline-none" autoFocus />
-                              <button onClick={() => handleEditCategorySave(cat)} className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all active:scale-95"><Save size={18}/></button>
-                              <button onClick={() => setEditingCategory(null)} className="p-3 bg-white text-gray-400 rounded-lg border border-gray-200"><X size={18}/></button>
+                              <input type="text" value={editCategoryInput} onChange={e => setEditCategoryInput(e.target.value)} className="flex-1 w-0 bg-white border-2 border-blue-100 rounded-lg p-2 sm:p-3 text-xs sm:text-sm font-bold focus:border-blue-500 outline-none" autoFocus />
+                              <button onClick={() => handleEditCategorySave(cat)} className="p-2 sm:p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all active:scale-95 shrink-0"><Save size={16} className="sm:w-[18px] sm:h-[18px]"/></button>
+                              <button onClick={() => setEditingCategory(null)} className="p-2 sm:p-3 bg-white text-gray-400 rounded-lg border border-gray-200 shrink-0"><X size={16} className="sm:w-[18px] sm:h-[18px]"/></button>
                             </div>
                           ) : (
-                            <div key={cat} className="flex items-center justify-between bg-gray-50 px-5 py-4 rounded-2xl text-sm font-bold text-gray-700 border border-gray-100 hover:border-blue-200 hover:bg-white transition-all shadow-sm">
-                              <span>{cat}</span>
-                              <div className="flex items-center gap-1 sm:opacity-100">
-                                <button onClick={() => { setEditingCategory(cat); setEditCategoryInput(cat); }} className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg"><Edit2 size={16}/></button>
-                                <button onClick={() => handleDeleteCategory(cat)} className="text-red-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                            <div key={cat} className="flex items-center justify-between bg-gray-50 px-4 sm:px-5 py-3 sm:py-4 rounded-2xl text-xs sm:text-sm font-bold text-gray-700 border border-gray-100 hover:border-blue-200 hover:bg-white transition-all shadow-sm">
+                              <span className="truncate">{cat}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button onClick={() => { setEditingCategory(cat); setEditCategoryInput(cat); }} className="text-blue-400 hover:text-blue-600 p-1.5 sm:p-2 hover:bg-blue-50 rounded-lg"><Edit2 size={14} className="sm:w-[16px] sm:h-[16px]"/></button>
+                                <button onClick={() => handleDeleteCategory(cat)} className="text-red-300 hover:text-red-500 p-1.5 sm:p-2 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="sm:w-[16px] sm:h-[16px]"/></button>
                               </div>
                             </div>
                           )
@@ -1786,53 +1821,53 @@
           {showPaymentModal && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowPaymentModal(false)}>
               <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                  <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Pembayaran</h3>
-                  <button onClick={() => setShowPaymentModal(false)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
+                <div className="p-5 sm:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                  <h3 className="font-black text-gray-800 flex items-center gap-2 sm:gap-3 text-lg sm:text-xl">Pembayaran</h3>
+                  <button onClick={() => setShowPaymentModal(false)} className="p-1.5 sm:p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={20} className="sm:w-[24px] sm:h-[24px]"/></button>
                 </div>
-                <div className="p-8 flex flex-col gap-6">
-                  <div className="flex justify-between items-center text-lg font-bold bg-blue-50 p-6 rounded-3xl border border-blue-100">
-                    <span className="text-blue-500 text-sm uppercase tracking-widest">Total</span><span className="text-blue-700 text-3xl font-black">{formatRupiah(grandTotal)}</span>
+                <div className="p-6 sm:p-8 flex flex-col gap-5 sm:gap-6">
+                  <div className="flex justify-between items-center text-base sm:text-lg font-bold bg-blue-50 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-blue-100">
+                    <span className="text-blue-500 text-xs sm:text-sm uppercase tracking-widest">Total</span><span className="text-blue-700 text-2xl sm:text-3xl font-black">{formatRupiah(grandTotal)}</span>
                   </div>
 
-                  <div className="flex bg-gray-100 p-1.5 rounded-2xl">
-                    <button onClick={() => setPaymentMethod('Tunai')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${paymentMethod === 'Tunai' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tunai</button>
-                    <button onClick={() => setPaymentMethod('Online')} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${paymentMethod === 'Online' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><QrCode size={16}/> QRIS / Transfer</button>
+                  <div className="flex bg-gray-100 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl">
+                    <button onClick={() => setPaymentMethod('Tunai')} className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl transition-all ${paymentMethod === 'Tunai' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tunai</button>
+                    <button onClick={() => setPaymentMethod('Online')} className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl transition-all flex items-center justify-center gap-2 ${paymentMethod === 'Online' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><QrCode size={14} className="sm:w-[16px] sm:h-[16px]"/> QRIS / Transfer</button>
                   </div>
 
                   {paymentMethod === 'Tunai' ? (
                     <React.Fragment>
                       <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Uang Tunai Diterima (Rp)</label>
-                        <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-4 border-gray-50 bg-gray-50 rounded-3xl p-6 text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
+                        <label className="block text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Uang Tunai Diterima (Rp)</label>
+                        <input type="number" min="0" value={cashAmount} onChange={e => setCashAmount(e.target.value)} className="w-full border-2 sm:border-4 border-gray-50 bg-gray-50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-2xl sm:text-3xl font-black text-center focus:border-blue-500 focus:bg-white outline-none transition-all shadow-inner" placeholder="0" autoFocus />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => setCashAmount(grandTotal)} className="py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-2xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
-                        <button onClick={() => setCashAmount(grandTotal > 50000 ? 100000 : 50000)} className="py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-2xl text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{grandTotal > 50000 ? '100.000' : '50.000'}</button>
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                        <button onClick={() => setCashAmount(grandTotal)} className="py-3 sm:py-4 border-2 border-blue-100 bg-blue-50 text-blue-700 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black hover:bg-blue-600 hover:text-white transition-all active:scale-95">UANG PAS</button>
+                        <button onClick={() => setCashAmount(grandTotal > 50000 ? 100000 : 50000)} className="py-3 sm:py-4 border-2 border-gray-100 bg-gray-50 text-gray-700 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black hover:bg-gray-700 hover:text-white transition-all active:scale-95">{grandTotal > 50000 ? '100.000' : '50.000'}</button>
                       </div>
-                      <div className="flex flex-col items-center mt-2 p-6 rounded-3xl bg-gray-900 text-white shadow-xl">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
-                        <span className={`text-3xl font-black ${changeAmount < 0 ? 'text-red-400' : 'text-green-400'}`}>{cashAmount === '' ? '-' : formatRupiah(changeAmount)}</span>
+                      <div className="flex flex-col items-center mt-1 sm:mt-2 p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-gray-900 text-white shadow-xl">
+                        <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Kembalian</span>
+                        <span className={`text-2xl sm:text-3xl font-black ${changeAmount < 0 ? 'text-red-400' : 'text-green-400'}`}>{cashAmount === '' ? '-' : formatRupiah(changeAmount)}</span>
                       </div>
                     </React.Fragment>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed border-blue-200 rounded-3xl bg-blue-50/50 h-full max-h-[300px] overflow-y-auto">
+                    <div className="flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed border-blue-200 rounded-2xl sm:rounded-3xl bg-blue-50/50 h-full max-h-[300px] overflow-y-auto">
                       {storeInfo.qrisImage ? (
-                        <img src={storeInfo.qrisImage} alt="QRIS" className="w-32 h-32 object-contain mb-3 rounded-lg shadow-sm border border-gray-200 bg-white p-1" />
+                        <img src={storeInfo.qrisImage} alt="QRIS" className="w-24 h-24 sm:w-32 sm:h-32 object-contain mb-3 rounded-lg shadow-sm border border-gray-200 bg-white p-1" />
                       ) : (
-                        <QrCode size={48} className="text-blue-300 mb-4" />
+                        <QrCode size={36} className="text-blue-300 mb-4 sm:w-[48px] sm:h-[48px]" />
                       )}
-                      <p className="text-sm font-bold text-blue-800 text-center mb-1">Menunggu Pembayaran Online</p>
+                      <p className="text-xs sm:text-sm font-bold text-blue-800 text-center mb-1">Menunggu Pembayaran Online</p>
                       {storeInfo.bankInfo ? (
-                        <div className="text-xs text-blue-700 text-center mt-2 whitespace-pre-line bg-white p-3 rounded-xl border border-blue-100 w-full">{storeInfo.bankInfo}</div>
+                        <div className="text-[10px] sm:text-xs text-blue-700 text-center mt-2 whitespace-pre-line bg-white p-3 rounded-xl border border-blue-100 w-full">{storeInfo.bankInfo}</div>
                       ) : (
-                        <p className="text-xs text-blue-500 text-center max-w-[200px]">Pastikan dana sudah masuk ke rekening/E-Wallet sebelum memproses.</p>
+                        <p className="text-[10px] sm:text-xs text-blue-500 text-center max-w-[200px]">Pastikan dana sudah masuk ke rekening/E-Wallet sebelum memproses.</p>
                       )}
                     </div>
                   )}
                 </div>
-                <div className="p-6 bg-gray-50 border-t border-gray-100">
-                  <button onClick={processPayment} disabled={paymentMethod === 'Tunai' && (cashAmount === '' || changeAmount < 0)} className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black text-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all active:scale-95 shadow-lg shadow-blue-100">Proses Transaksi</button>
+                <div className="p-5 sm:p-6 bg-gray-50 border-t border-gray-100">
+                  <button onClick={processPayment} disabled={paymentMethod === 'Tunai' && (cashAmount === '' || changeAmount < 0)} className="w-full py-4 sm:py-5 bg-blue-600 text-white rounded-2xl sm:rounded-3xl font-black text-base sm:text-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all active:scale-95 shadow-lg shadow-blue-100">Proses Transaksi</button>
                 </div>
               </div>
             </div>
@@ -1842,22 +1877,22 @@
           {currentReceipt && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setCurrentReceipt(null)}>
               <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                  <h3 className="font-black text-gray-800 flex items-center gap-3 text-xl">Struk Berhasil</h3>
-                  <button onClick={() => setCurrentReceipt(null)} className="p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={24} /></button>
+                <div className="p-5 sm:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                  <h3 className="font-black text-gray-800 flex items-center gap-2 sm:gap-3 text-lg sm:text-xl">Struk Berhasil</h3>
+                  <button onClick={() => setCurrentReceipt(null)} className="p-1.5 sm:p-2 hover:bg-red-100 hover:text-red-600 rounded-full text-gray-400 transition-all"><X size={20} className="sm:w-[24px] sm:h-[24px]" /></button>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-8 bg-gray-100 flex justify-center shadow-inner">
-                  <div className="bg-white w-full shadow-2xl p-6 font-mono text-[10px] text-gray-800 flex flex-col border border-gray-200 rounded-md relative overflow-hidden" style={{ maxWidth: '300px' }}>
+                <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-gray-100 flex justify-center shadow-inner">
+                  <div className="bg-white w-full shadow-2xl p-5 sm:p-6 font-mono text-[9px] sm:text-[10px] text-gray-800 flex flex-col border border-gray-200 rounded-md relative overflow-hidden" style={{ maxWidth: '300px' }}>
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-b from-gray-100 to-transparent"></div>
-                    {storeInfo.logo && <img src={storeInfo.logo} className="w-16 h-16 object-contain mx-auto mb-4" />}
-                    <div className="text-center font-black text-sm mb-1 uppercase tracking-tighter">{storeInfo.name}</div>
-                    <div className="text-center text-[8px] mb-4 pb-4 border-b border-dashed border-gray-300 leading-tight uppercase font-bold text-gray-400">{storeInfo.address}</div>
+                    {storeInfo.logo && <img src={storeInfo.logo} className="w-12 h-12 sm:w-16 sm:h-16 object-contain mx-auto mb-3 sm:mb-4" />}
+                    <div className="text-center font-black text-xs sm:text-sm mb-1 uppercase tracking-tighter">{storeInfo.name}</div>
+                    <div className="text-center text-[7px] sm:text-[8px] mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-dashed border-gray-300 leading-tight uppercase font-bold text-gray-400">{storeInfo.address}</div>
                     
                     <div className="mb-1 flex justify-between font-bold text-gray-500"><span>KASIR:</span><span className="text-gray-800">{currentReceipt.cashier || storeInfo.cashierName}</span></div>
-                    <div className="mb-4 flex justify-between font-bold text-gray-500"><span>WAKTU:</span><span className="text-gray-800">{currentReceipt.date}</span></div>
+                    <div className="mb-3 sm:mb-4 flex justify-between font-bold text-gray-500"><span>WAKTU:</span><span className="text-gray-800">{currentReceipt.date}</span></div>
                     
-                    <div className="flex flex-col gap-2 mb-4 pb-4 border-b border-dashed border-gray-300">
+                    <div className="flex flex-col gap-1.5 sm:gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-dashed border-gray-300">
                       {currentReceipt.items.map((item, idx) => (
                         <div key={idx}>
                           <div className="font-black text-gray-900 mb-0.5">{item.product.name}</div>
@@ -1866,30 +1901,29 @@
                       ))}
                     </div>
                     
-                    {/* REVISI STRUK: Subtotal, Diskon, PPN */}
                     <div className="flex justify-between font-bold text-gray-500 mb-1"><span>Subtotal</span><span>{formatRupiah(currentReceipt.subtotal || currentReceipt.total)}</span></div>
                     {currentReceipt.discount > 0 && <div className="flex justify-between font-bold text-gray-500 mb-1"><span>Diskon</span><span>-{formatRupiah(currentReceipt.discount)}</span></div>}
                     {currentReceipt.taxAmount > 0 && <div className="flex justify-between font-bold text-gray-500 mb-1"><span>PPN ({currentReceipt.taxRate || 0}%)</span><span>+{formatRupiah(currentReceipt.taxAmount)}</span></div>}
                     
-                    <div className="flex justify-between font-black text-sm mb-1 mt-2 border-t border-dashed border-gray-300 pt-2"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
+                    <div className="flex justify-between font-black text-xs sm:text-sm mb-1 mt-2 border-t border-dashed border-gray-300 pt-2"><span>GRAND TOTAL</span><span>{formatRupiah(currentReceipt.total)}</span></div>
                     <div className="flex justify-between font-bold text-gray-500 mb-1"><span>METODE</span><span className="uppercase">{currentReceipt.paymentMethod || 'TUNAI'}</span></div>
                     {currentReceipt.paymentMethod !== 'Online' && (
                       <React.Fragment>
                         <div className="flex justify-between font-bold text-gray-400 mb-1"><span>TUNAI</span><span>{formatRupiah(currentReceipt.cash || 0)}</span></div>
-                        <div className="flex justify-between font-black text-gray-900 mb-6"><span>KEMBALIAN</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
+                        <div className="flex justify-between font-black text-gray-900 mb-5 sm:mb-6"><span>KEMBALIAN</span><span>{formatRupiah(currentReceipt.change || 0)}</span></div>
                       </React.Fragment>
                     )}
                     
-                    <div className={`text-center font-black border-t border-dashed border-gray-300 pt-4 text-gray-400 tracking-widest uppercase ${currentReceipt.paymentMethod === 'Online' ? 'mt-4' : ''}`}>LUNAS</div>
-                    <div className="text-center text-[8px] mt-1 font-bold text-gray-400">Terima Kasih Atas Kunjungan Anda</div>
+                    <div className={`text-center font-black border-t border-dashed border-gray-300 pt-3 sm:pt-4 text-gray-400 tracking-widest uppercase ${currentReceipt.paymentMethod === 'Online' ? 'mt-3 sm:mt-4' : ''}`}>LUNAS</div>
+                    <div className="text-center text-[7px] sm:text-[8px] mt-1 font-bold text-gray-400">Terima Kasih Atas Kunjungan Anda</div>
                     <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-t from-gray-100 to-transparent"></div>
                   </div>
                 </div>
 
-                <div className="p-6 bg-white border-t border-gray-100 flex flex-col gap-3">
-                  <button onClick={() => printBluetooth(currentReceipt)} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 flex justify-center items-center gap-3 transition-all shadow-lg shadow-blue-100 active:scale-95"><Printer size={20} /> Cetak Struk (BT)</button>
-                  <button onClick={printReceiptAsPDF} className="w-full py-4 bg-white text-gray-800 rounded-2xl font-black hover:bg-gray-50 flex justify-center items-center gap-3 border-2 border-gray-100 transition-all active:scale-95"><FileText size={20} /> Simpan PDF / Web</button>
-                  <button onClick={() => setCurrentReceipt(null)} className="w-full py-3 bg-red-50 text-red-500 rounded-2xl font-black hover:bg-red-100 transition-all text-xs">Selesai</button>
+                <div className="p-5 sm:p-6 bg-white border-t border-gray-100 flex flex-col gap-2 sm:gap-3">
+                  <button onClick={() => printBluetooth(currentReceipt)} className="w-full py-3 sm:py-4 bg-blue-600 text-white rounded-xl sm:rounded-2xl font-black hover:bg-blue-700 flex justify-center items-center gap-2 sm:gap-3 transition-all shadow-lg shadow-blue-100 active:scale-95 text-sm sm:text-base"><Printer size={18} className="sm:w-[20px] sm:h-[20px]" /> Cetak Struk (BT)</button>
+                  <button onClick={printReceiptAsPDF} className="w-full py-3 sm:py-4 bg-white text-gray-800 rounded-xl sm:rounded-2xl font-black hover:bg-gray-50 flex justify-center items-center gap-2 sm:gap-3 border-2 border-gray-100 transition-all active:scale-95 text-sm sm:text-base"><FileText size={18} className="sm:w-[20px] sm:h-[20px]" /> Simpan PDF / Web</button>
+                  <button onClick={() => setCurrentReceipt(null)} className="w-full py-2.5 sm:py-3 bg-red-50 text-red-500 rounded-xl sm:rounded-2xl font-black hover:bg-red-100 transition-all text-[10px] sm:text-xs">Selesai</button>
                 </div>
               </div>
             </div>
@@ -1912,7 +1946,6 @@
                 ))}
               </div>
               
-              {/* REVISI PRINT WEB: Subtotal, Diskon, PPN */}
               <div className="flex justify-between text-[8px] mb-1"><span>Subtotal</span><span>{formatNumberBT(currentReceipt.subtotal || currentReceipt.total)}</span></div>
               {currentReceipt.discount > 0 && <div className="flex justify-between text-[8px] mb-1"><span>Diskon</span><span>-{formatNumberBT(currentReceipt.discount)}</span></div>}
               {currentReceipt.taxAmount > 0 && <div className="flex justify-between text-[8px] mb-1"><span>PPN ({currentReceipt.taxRate || 0}%)</span><span>+{formatNumberBT(currentReceipt.taxAmount)}</span></div>}
