@@ -66,11 +66,23 @@
 
     // Data Produk Dummy (untuk initial load)
     const INITIAL_PRODUCTS = [
-      { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, hpp: 12000, category: 'Minuman', stock: 5, barcode: '1111' },
-      { id: 2, name: 'Americano', price: 15000, hpp: 10000, category: 'Minuman', stock: 50, barcode: '2222' },
-      { id: 3, name: 'Nasi Goreng Spesial', price: 25000, hpp: 18000, category: 'Makanan', stock: 3, barcode: '3333' },
-      { id: 4, name: 'Kentang Goreng', price: 12000, hpp: 8000, category: 'Cemilan', stock: 100, barcode: '4444' }
+      { id: 1, name: 'Kopi Susu Gula Aren', price: 18000, hpp: 12000, wholesalePrice: 16000, wholesaleMinQty: 5, category: 'Minuman', stock: 5, barcode: '1111' },
+      { id: 2, name: 'Americano', price: 15000, hpp: 10000, wholesalePrice: 13000, wholesaleMinQty: 10, category: 'Minuman', stock: 50, barcode: '2222' },
+      { id: 3, name: 'Nasi Goreng Spesial', price: 25000, hpp: 18000, wholesalePrice: 0, wholesaleMinQty: 0, category: 'Makanan', stock: 3, barcode: '3333' },
+      { id: 4, name: 'Kentang Goreng', price: 12000, hpp: 8000, wholesalePrice: 10000, wholesaleMinQty: 5, category: 'Cemilan', stock: 100, barcode: '4444' }
     ];
+
+    // Helper Harga Grosir
+    const getAppliedPrice = (product, qty) => {
+      if (product.wholesaleMinQty > 0 && qty >= product.wholesaleMinQty && product.wholesalePrice > 0) {
+        return product.wholesalePrice;
+      }
+      return product.price;
+    };
+
+    const isWholesaleApplied = (product, qty) => {
+      return (product.wholesaleMinQty > 0 && qty >= product.wholesaleMinQty && product.wholesalePrice > 0);
+    };
 
     // --- COMPONENT: CUSTOM DIALOG (Alert/Confirm) ---
     const CustomDialog = ({ dialog, onClose }) => {
@@ -297,7 +309,7 @@
       const [editCategoryInput, setEditCategoryInput] = useState('');
       
       const [editingId, setEditingId] = useState(null);
-      const [formData, setFormData] = useState({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
+      const [formData, setFormData] = useState({ name: '', price: '', hpp: '', wholesalePrice: '', wholesaleMinQty: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       
       // State Kasir/Transaksi (Termasuk Diskon & PPN)
       const [currentReceipt, setCurrentReceipt] = useState(null);
@@ -307,6 +319,12 @@
       
       const [cartDiscount, setCartDiscount] = useState(''); // Nominal Diskon (Rp)
       const [cartTaxRate, setCartTaxRate] = useState('');   // Persentase PPN (%)
+
+      // State Pengaturan Printer
+      const [printerSettings, setPrinterSettings] = useState(() => {
+        const saved = localStorage.getItem('pos_printer_settings');
+        return saved ? JSON.parse(saved) : { paperSize: '58', autoPrint: false };
+      });
 
       // State Pencarian & Filter
       const [searchTerm, setSearchTerm] = useState(''); 
@@ -351,6 +369,7 @@
       useEffect(() => { localStorage.setItem('pos_store_info', JSON.stringify(storeInfo)); }, [storeInfo]);
       useEffect(() => { localStorage.setItem('pos_pin', pinCode); }, [pinCode]);
       useEffect(() => { localStorage.setItem('pos_categories', JSON.stringify(categories)); }, [categories]);
+      useEffect(() => { localStorage.setItem('pos_printer_settings', JSON.stringify(printerSettings)); }, [printerSettings]);
 
       // --- LISTENER KEYBOARD (UNTUK SCANNER BARCODE FISIK / USB) ---
       useEffect(() => {
@@ -478,7 +497,10 @@
             const importedData = JSON.parse(event.target.result);
             if (importedData.products && importedData.salesHistory && importedData.storeInfo) {
               const updatedProducts = importedData.products.map(p => ({
-                 ...p, hpp: p.hpp !== undefined ? Number(p.hpp) : 0 
+                 ...p, 
+                 hpp: p.hpp !== undefined ? Number(p.hpp) : 0,
+                 wholesalePrice: p.wholesalePrice !== undefined ? Number(p.wholesalePrice) : 0,
+                 wholesaleMinQty: p.wholesaleMinQty !== undefined ? Number(p.wholesaleMinQty) : 0
               }));
               
               setProducts(updatedProducts);
@@ -520,6 +542,8 @@
           ...formData,
           price: Number(formData.price),
           hpp: Number(formData.hpp || 0),
+          wholesalePrice: Number(formData.wholesalePrice || 0),
+          wholesaleMinQty: Number(formData.wholesaleMinQty || 0),
           stock: Number(formData.stock)
         };
 
@@ -529,7 +553,7 @@
         } else {
           setProducts([...products, { id: Date.now(), ...finalProduct }]);
         }
-        setFormData({ name: '', price: '', hpp: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
+        setFormData({ name: '', price: '', hpp: '', wholesalePrice: '', wholesaleMinQty: '', category: categories[0] || 'Lainnya', stock: '', barcode: '' });
       };
 
       const handleEditProduct = (product) => {
@@ -538,6 +562,8 @@
           name: product.name, 
           price: product.price, 
           hpp: product.hpp || '', 
+          wholesalePrice: product.wholesalePrice || '',
+          wholesaleMinQty: product.wholesaleMinQty || '',
           category: product.category, 
           stock: product.stock !== undefined ? product.stock : 0, 
           barcode: product.barcode || '' 
@@ -626,8 +652,9 @@
          showConfirm('Yakin ingin mengosongkan keranjang belanja?', () => setCart([]));
       };
 
-      // Kalkulasi Utama Kasir
-      const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0), [cart]);
+      // Kalkulasi Utama Kasir (Menghitung Subtotal Secara Dinamis Berdasarkan Harga Grosir)
+      const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (getAppliedPrice(item.product, item.quantity) * item.quantity), 0), [cart]);
+      
       // Validasi agar diskon tidak error jika input diisi string aneh
       let discountAmount = parseInt(cartDiscount, 10);
       if (isNaN(discountAmount) || discountAmount < 0) discountAmount = 0;
@@ -714,8 +741,8 @@
         const html = `
           <html><head><title>Struk_${currentReceipt.id}</title>
             <style>
-              @page { margin: 0; size: 58mm auto; }
-              body { font-family: 'Courier New', Courier, monospace; width: 58mm; margin: 0 auto; padding: 10px; color: #000; font-size: 12px; }
+              @page { margin: 0; size: ${printerSettings.paperSize}mm auto; }
+              body { font-family: 'Courier New', Courier, monospace; width: ${printerSettings.paperSize}mm; margin: 0 auto; padding: 10px; color: #000; font-size: 12px; }
               .text-center { text-align: center; } .text-right { text-align: right; } .font-bold { font-weight: bold; }
               .divider { border-top: 1px dashed #000; margin: 8px 0; }
               table { width: 100%; border-collapse: collapse; } td { padding: 2px 0; vertical-align: top; }
@@ -901,73 +928,75 @@
       const printBluetooth = async (saleData) => {
         if (!printerCharacteristic) return showAlert('Printer Bluetooth belum terhubung!', 'Peringatan');
         try {
+          const paperWidth = printerSettings.paperSize === '80' ? 48 : 32;
           let receiptText = "";
-          receiptText += padCenter(storeInfo.name, 32) + "\n";
-          receiptText += padCenter(storeInfo.address, 32) + "\n";
-          receiptText += "================================\n";
+          receiptText += padCenter(storeInfo.name, paperWidth) + "\n";
+          receiptText += padCenter(storeInfo.address, paperWidth) + "\n";
+          receiptText += "=".repeat(paperWidth) + "\n";
           receiptText += `KASIR  : ${saleData.cashier || storeInfo.cashierName}\n`;
           receiptText += `TANGGAL: ${saleData.date}\n`;
-          receiptText += "================================\n";
+          receiptText += "=".repeat(paperWidth) + "\n";
           
           saleData.items.forEach(item => {
             let pName = item.product.name;
-            if(pName.length > 32) pName = pName.substring(0, 32);
+            if(pName.length > paperWidth) pName = pName.substring(0, paperWidth);
             receiptText += `${pName}\n`;
             
             const qtyPrice = `${item.quantity} x ${formatNumberBT(item.product.price)}`;
             const subtotalItem = `${formatNumberBT(item.quantity * item.product.price)}`;
-            const spaces = Math.max(1, 32 - qtyPrice.length - subtotalItem.length);
+            const spaces = Math.max(1, paperWidth - qtyPrice.length - subtotalItem.length);
             receiptText += `${qtyPrice}${' '.repeat(spaces)}${subtotalItem}\n`;
           });
           
-          receiptText += "--------------------------------\n";
+          receiptText += "-".repeat(paperWidth) + "\n";
           
           // Print Subtotal
           const subtotalStr = `${formatNumberBT(saleData.subtotal || saleData.total)}`;
           const subtotalLabel = "SUBTOTAL:";
-          receiptText += `${subtotalLabel}${' '.repeat(Math.max(1, 32 - subtotalLabel.length - subtotalStr.length))}${subtotalStr}\n`;
+          receiptText += `${subtotalLabel}${' '.repeat(Math.max(1, paperWidth - subtotalLabel.length - subtotalStr.length))}${subtotalStr}\n`;
           
           // Print Diskon (Jika Ada)
           if (saleData.discount > 0) {
               const discStr = `-${formatNumberBT(saleData.discount)}`;
               const discLabel = "DISKON:";
-              receiptText += `${discLabel}${' '.repeat(Math.max(1, 32 - discLabel.length - discStr.length))}${discStr}\n`;
+              receiptText += `${discLabel}${' '.repeat(Math.max(1, paperWidth - discLabel.length - discStr.length))}${discStr}\n`;
           }
 
           // Print PPN (Jika Ada)
           if (saleData.taxAmount > 0) {
               const taxStr = `+${formatNumberBT(saleData.taxAmount)}`;
               const taxLabel = `PPN (${saleData.taxRate || 0}%):`;
-              receiptText += `${taxLabel}${' '.repeat(Math.max(1, 32 - taxLabel.length - taxStr.length))}${taxStr}\n`;
+              receiptText += `${taxLabel}${' '.repeat(Math.max(1, paperWidth - taxLabel.length - taxStr.length))}${taxStr}\n`;
           }
 
-          receiptText += "================================\n";
+          receiptText += "=".repeat(paperWidth) + "\n";
 
           // Print Grand Total
           const totalStr = `${formatNumberBT(saleData.total)}`;
           const totalLabel = "GRAND TOTAL:";
-          const totalSpaces = 32 - totalLabel.length - totalStr.length;
+          const totalSpaces = paperWidth - totalLabel.length - totalStr.length;
           receiptText += `${totalLabel}${' '.repeat(totalSpaces > 0 ? totalSpaces : 1)}${totalStr}\n`;
           
           const methodStr = `${saleData.paymentMethod || 'Tunai'}`.toUpperCase();
           const methodLabel = "METODE:";
-          const methodSpaces = 32 - methodLabel.length - methodStr.length;
+          const methodSpaces = paperWidth - methodLabel.length - methodStr.length;
           receiptText += `${methodLabel}${' '.repeat(methodSpaces > 0 ? methodSpaces : 1)}${methodStr}\n`;
 
           if (saleData.paymentMethod !== 'Online') {
             const cashStr = `${formatNumberBT(saleData.cash || 0)}`;
             const cashLabel = "TUNAI:";
-            const cashSpaces = 32 - cashLabel.length - cashStr.length;
+            const cashSpaces = paperWidth - cashLabel.length - cashStr.length;
             receiptText += `${cashLabel}${' '.repeat(cashSpaces > 0 ? cashSpaces : 1)}${cashStr}\n`;
 
             const changeStr = `${formatNumberBT(saleData.change || 0)}`;
             const changeLabel = "KEMBALI:";
-            const changeSpaces = 32 - changeLabel.length - changeStr.length;
+            const changeSpaces = paperWidth - changeLabel.length - changeStr.length;
             receiptText += `${changeLabel}${' '.repeat(changeSpaces > 0 ? changeSpaces : 1)}${changeStr}\n`;
           }
           
-          receiptText += "================================\n";
-          receiptText += "          Terima Kasih         \n   Silakan datang kembali :)   \n\n\n";
+          receiptText += "=".repeat(paperWidth) + "\n";
+          receiptText += padCenter("Terima Kasih", paperWidth) + "\n";
+          receiptText += padCenter("Silakan datang kembali :)", paperWidth) + "\n\n\n";
 
           await sendTextToPrinter(printerCharacteristic, receiptText);
           showAlert('Struk berhasil dicetak via Bluetooth!', 'Sukses');
@@ -1007,9 +1036,10 @@
           id: Date.now(), 
           date: new Date().toLocaleString('id-ID'), 
           items: cart.map(item => ({
-             product: item.product,
+             product: { ...item.product, price: getAppliedPrice(item.product, item.quantity) },
              quantity: item.quantity,
-             hpp: item.product.hpp || 0 
+             hpp: item.product.hpp || 0,
+             isWholesale: isWholesaleApplied(item.product, item.quantity)
           })), 
           subtotal: subtotal,
           discount: discountAmount,
@@ -1038,6 +1068,11 @@
         // Buka laci otomatis jika pembayaran tunai dan printer terhubung
         if (paymentMethod === 'Tunai' && printerCharacteristic) {
            openCashDrawer();
+        }
+
+        // Auto Print Bluetooth jika diaktifkan
+        if (printerSettings.autoPrint && printerCharacteristic) {
+           printBluetooth(newSale);
         }
         
         // Reset Form Diskon/Pajak setelah transaksi berhasil
@@ -1269,7 +1304,7 @@
                   </div>
 
                   {/* Keranjang Panel */}
-                  <div className="w-full lg:w-[400px] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[500px] lg:h-full shrink-0">
+                  <div className="w-full lg:w-[450px] xl:w-[500px] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[500px] lg:h-full shrink-0">
                     <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                       <div className="flex items-center gap-2">
                         <h2 className="font-bold text-gray-700 text-lg flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Keranjang</h2>
@@ -1285,15 +1320,25 @@
                       {cart.length === 0 ? (
                         <div className="m-auto text-center text-gray-300 flex flex-col items-center"><ShoppingCart size={64} className="mb-4 opacity-10" /><p className="font-bold text-gray-400">Keranjang Kosong</p><p className="text-xs mt-1">Pilih produk di samping atau gunakan scanner</p></div>
                       ) : (
-                        cart.map((item) => (
-                          <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
-                            <div className="flex-1 pr-3"><h4 className="font-bold text-gray-800 text-sm leading-tight mb-1">{item.product.name}</h4><p className="text-gray-500 text-xs font-medium">{formatRupiah(item.product.price)}</p></div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"><button onClick={() => updateQuantity(item.product.id, -1)} className="p-2 hover:bg-red-50 hover:text-red-600 text-gray-500 transition-colors"><Minus size={14} /></button><span className="w-10 text-center text-sm font-black text-gray-700">{item.quantity}</span><button onClick={() => updateQuantity(item.product.id, 1)} className="p-2 hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors"><Plus size={14} /></button></div>
-                              <button onClick={() => removeFromCart(item.product.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={18} /></button>
+                        cart.map((item) => {
+                          const appliedPrice = getAppliedPrice(item.product, item.quantity);
+                          const isGrosir = isWholesaleApplied(item.product, item.quantity);
+                          return (
+                            <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
+                              <div className="flex-1 pr-3">
+                                <h4 className="font-bold text-gray-800 text-sm leading-tight mb-1">{item.product.name}</h4>
+                                <p className="text-gray-500 text-xs font-medium flex items-center gap-2">
+                                  {formatRupiah(appliedPrice)}
+                                  {isGrosir && <span className="bg-green-100 text-green-700 text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase">Grosir</span>}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"><button onClick={() => updateQuantity(item.product.id, -1)} className="p-2.5 hover:bg-red-50 hover:text-red-600 text-gray-500 transition-colors"><Minus size={16} /></button><span className="w-10 text-center text-base font-black text-gray-700">{item.quantity}</span><button onClick={() => updateQuantity(item.product.id, 1)} className="p-2.5 hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors"><Plus size={16} /></button></div>
+                                <button onClick={() => removeFromCart(item.product.id)} className="p-2.5 text-red-500 hover:bg-red-100 rounded-xl transition-all" title="Hapus"><Trash2 size={20} /></button>
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                     
@@ -1344,6 +1389,10 @@
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Harga Grosir</label><input type="number" min="0" value={formData.wholesalePrice} onChange={e => setFormData({...formData, wholesalePrice: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Mis: 14000"/></div>
+                        <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Min. Qty Grosir</label><input type="number" min="0" value={formData.wholesaleMinQty} onChange={e => setFormData({...formData, wholesaleMinQty: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="Mis: 5"/></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
                         <div><label className="block text-xs font-black text-gray-500 uppercase mb-2">Stok</label><input required type="number" min="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none" placeholder="100"/></div>
                         <div>
                           <label className="block text-xs font-black text-gray-500 uppercase mb-2">Kategori</label>
@@ -1366,7 +1415,7 @@
                       </div>
                       <div className="flex gap-3 mt-2">
                         <button type="submit" className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-100"><Save size={20}/> Simpan</button>
-                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', hpp:'', category: categories[0] || 'Lainnya', stock:'', barcode:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
+                        {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({name:'', price:'', hpp:'', wholesalePrice:'', wholesaleMinQty:'', category: categories[0] || 'Lainnya', stock:'', barcode:''});}} className="px-6 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Batal</button>}
                       </div>
                     </form>
                   </div>
@@ -1397,7 +1446,7 @@
 
                     <div className="overflow-y-auto p-0 flex-1 block">
                       <table className="w-full text-left border-collapse min-w-[700px]">
-                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga Jual</th><th className="p-5 border-b border-gray-200 text-gray-500">Modal (HPP)</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-right text-indigo-400">Total Modal</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
+                        <thead className="bg-gray-50 sticky top-0 text-gray-400 text-[10px] font-black uppercase tracking-wider z-10 shadow-sm"><tr><th className="p-5 border-b border-gray-200">Produk & Barcode</th><th className="p-5 border-b border-gray-200">Kategori</th><th className="p-5 border-b border-gray-200">Harga Jual & Grosir</th><th className="p-5 border-b border-gray-200 text-gray-500">Modal (HPP)</th><th className="p-5 border-b border-gray-200 text-center">Stok</th><th className="p-5 border-b border-gray-200 text-right text-indigo-400">Total Modal</th><th className="p-5 border-b border-gray-200 text-center">Aksi</th></tr></thead>
                         <tbody className="text-sm">
                           {filteredInventory.map(product => {
                             const stock = product.stock !== undefined ? product.stock : 0;
@@ -1409,7 +1458,14 @@
                                   {product.barcode && <div className="text-[10px] text-gray-400 font-medium flex items-center gap-1 mt-1"><ScanBarcode size={12}/> {product.barcode}</div>}
                                 </td>
                                 <td className="p-5"><span className="bg-white px-3 py-1 rounded-full text-[10px] font-black border border-gray-200 text-gray-500 uppercase">{product.category}</span></td>
-                                <td className="p-5 font-black text-blue-600">{formatRupiah(product.price)}</td>
+                                <td className="p-5 font-black text-blue-600">
+                                  {formatRupiah(product.price)}
+                                  {product.wholesaleMinQty > 0 && product.wholesalePrice > 0 && (
+                                    <div className="text-[10px] font-bold text-green-600 mt-1">
+                                      Grosir: {formatRupiah(product.wholesalePrice)} (≥{product.wholesaleMinQty})
+                                    </div>
+                                  )}
+                                </td>
                                 <td className="p-5 font-bold text-gray-500 text-xs">{formatRupiah(product.hpp || 0)}</td>
                                 <td className="p-5 text-center"><span className={`px-3 py-1 rounded-lg font-black text-xs border ${stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>{stock}</span></td>
                                 <td className="p-5 text-right font-black text-indigo-600 text-xs">{formatRupiah(totalModal)}</td>
@@ -1604,6 +1660,54 @@
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-6">
+                    {/* PENGATURAN PRINTER THERMAL */}
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+                      <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><Printer size={24} className="text-blue-600"/> Pengaturan Printer</h2>
+                      <div className="flex flex-col gap-6">
+                        <div className="flex items-center justify-between bg-blue-50 p-4 rounded-xl border border-blue-100">
+                          <div>
+                            <h4 className="font-bold text-sm text-gray-800">Koneksi Bluetooth</h4>
+                            <p className="text-xs text-gray-500 mt-0.5">{printerDevice ? printerDevice.name : 'Belum terhubung'}</p>
+                          </div>
+                          {printerDevice ? (
+                            <button onClick={() => {
+                                if(printerDevice && printerDevice.gatt && printerDevice.gatt.connected) {
+                                    printerDevice.gatt.disconnect();
+                                }
+                                setPrinterDevice(null);
+                                setPrinterCharacteristic(null);
+                                showAlert("Printer Bluetooth telah diputuskan.", "Informasi");
+                            }} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 shadow-sm transition-colors">Putuskan</button>
+                          ) : (
+                            <button onClick={connectToPrinter} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm transition-colors">Hubungkan</button>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 uppercase mb-2">Ukuran Kertas Thermal</label>
+                          <select value={printerSettings.paperSize} onChange={e => setPrinterSettings({...printerSettings, paperSize: e.target.value})} className="w-full border-2 border-gray-100 rounded-xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none bg-white cursor-pointer shadow-inner">
+                            <option value="58">58mm (Kecil - 32 Karakter)</option>
+                            <option value="80">80mm (Besar - 48 Karakter)</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                          <div>
+                            <h4 className="font-bold text-sm text-gray-800">Cetak Otomatis</h4>
+                            <p className="text-[10px] text-gray-500 mt-0.5">Struk dicetak otomatis saat transaksi berhasil</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={printerSettings.autoPrint} onChange={e => setPrinterSettings({...printerSettings, autoPrint: e.target.checked})} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          </label>
+                        </div>
+
+                        <button onClick={openCashDrawer} disabled={!printerCharacteristic} className="w-full py-4 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all active:scale-95 disabled:bg-gray-300 disabled:text-gray-500 text-sm flex items-center justify-center gap-2 shadow-lg">
+                          <Archive size={18} /> Test Buka Laci Kasir
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
                       <h2 className="font-bold text-gray-800 mb-8 flex items-center gap-3 text-xl pb-4 border-b border-gray-100"><Lock size={24} className="text-blue-600"/> Keamanan (Ubah PIN)</h2>
                       <form onSubmit={handleChangePin} className="flex flex-col gap-4">
@@ -1796,7 +1900,7 @@
 
           {/* Tampilan Struk Hidden khusus untuk Fungsi Print Bawaan Web Browser (Native) */}
           {currentReceipt && (
-            <div className="hidden print:block font-mono text-black bg-white w-full mx-auto text-[10px] leading-tight" style={{ maxWidth: '58mm' }}>
+            <div className="hidden print:block font-mono text-black bg-white w-full mx-auto text-[10px] leading-tight" style={{ maxWidth: `${printerSettings.paperSize}mm` }}>
               {storeInfo.logo && <img src={storeInfo.logo} style={{ width: '30mm', display: 'block', margin: '0 auto 5mm auto' }} />}
               <div className="text-center font-bold text-sm mb-1">{storeInfo.name}</div>
               <div className="text-center text-[8px] mb-3 pb-3 border-b border-dashed border-black">{storeInfo.address}</div>
